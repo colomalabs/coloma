@@ -1,42 +1,45 @@
 import { useMemo, useState } from "react";
 import { LineChart as LineChartIcon } from "lucide-react";
-import { formatSeconds, formatTokens, MetricInfo, SeriesChart } from "./charts/SeriesChart";
+import { MetricInfo, SeriesChart } from "./charts/SeriesChart";
+import { formatTokens } from "./charts/chartFormatters";
+import { SPECS, specHint } from "./benchMetricSpecs";
+import { promptTokensOf } from "../lib/benchPoints";
 import { BenchPoint, StressTestResult } from "../types";
 
 // Fixed categorical order (never cycled/reassigned) so a series' color stays tied to its rank
-// among the known series_ids (not the raw id, which is an arbitrary n_tokens value and collides
-// mod palette length). A 9th concurrent series would need a different encoding (small multiples,
-// etc.) rather than an extra generated hue.
+// among the known concurrency values. The default grid has exactly 8 of them; a 9th concurrent
+// series would need a different encoding (small multiples, etc.) rather than an extra generated hue.
 const SERIES_PALETTE = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];
 
 function seriesColor(rank: number): string {
   return SERIES_PALETTE[rank % SERIES_PALETTE.length];
 }
 
-// One row per concurrency value, holding each series' point for that concurrency so the chart can
-// plot every series against a shared x-axis.
+// One row per prompt length, holding each concurrency's point for that length so the chart can plot
+// every concurrency series against a shared prompt-token x-axis.
 type BenchRow = {
-  concurrent_requests: number;
-  bySeries: Record<string, BenchPoint>;
+  promptTokens: number;
+  label: string;
+  byConcurrency: Record<number, BenchPoint>;
+  // Set only on the extra row the full-context stress test contributes to the felt-TTFT chart.
+  stressTtft?: number;
 };
 
-function pivotBySeries(points: BenchPoint[]): { rows: BenchRow[]; seriesIds: string[] } {
-  const rows = new Map<number, BenchRow>();
-  // Order of first appearance, not sorted alphabetically — series_id is a free-form label
-  // (e.g. "1024 tokens") and the backend already emits series in a sensible sweep order.
-  const seriesIds: string[] = [];
+function pivotByPromptLength(points: BenchPoint[]): { rows: BenchRow[]; concurrencies: number[] } {
+  const rows = new Map<string, BenchRow>();
+  const concurrencies: number[] = [];
   for (const point of points) {
-    if (!seriesIds.includes(point.series_id)) seriesIds.push(point.series_id);
-    let row = rows.get(point.concurrent_requests);
+    if (!concurrencies.includes(point.concurrent_requests)) concurrencies.push(point.concurrent_requests);
+    let row = rows.get(point.series_id);
     if (!row) {
-      row = { concurrent_requests: point.concurrent_requests, bySeries: {} };
-      rows.set(point.concurrent_requests, row);
+      row = { promptTokens: promptTokensOf(point), label: point.series_id, byConcurrency: {} };
+      rows.set(point.series_id, row);
     }
-    row.bySeries[point.series_id] = point;
+    row.byConcurrency[point.concurrent_requests] = point;
   }
   return {
-    rows: [...rows.values()].sort((a, b) => a.concurrent_requests - b.concurrent_requests),
-    seriesIds,
+    rows: [...rows.values()].sort((a, b) => a.promptTokens - b.promptTokens),
+    concurrencies: concurrencies.sort((a, b) => a - b),
   };
 }
 
@@ -62,14 +65,14 @@ function groupByMaxNumSeqs(points: BenchPoint[]): BenchGroup[] {
     .sort((a, b) => (b.maxNumSeqs ?? 0) - (a.maxNumSeqs ?? 0));
 }
 
-// Colors are assigned from the series' rank across every group, not within one, so a prompt length
-// keeps its color even when a server settled on a shorter context length and dropped the last series.
-function allSeriesIds(points: BenchPoint[]): string[] {
-  const seriesIds: string[] = [];
+// Colors are assigned from the concurrency's rank across every group, not within one, so a
+// concurrency keeps its color even when one server's sweep timed out before reaching the higher ones.
+function allConcurrencyValues(points: BenchPoint[]): number[] {
+  const values: number[] = [];
   for (const point of points) {
-    if (!seriesIds.includes(point.series_id)) seriesIds.push(point.series_id);
+    if (!values.includes(point.concurrent_requests)) values.push(point.concurrent_requests);
   }
-  return seriesIds;
+  return values.sort((a, b) => a - b);
 }
 
 const MAX_NUM_SEQS_HELP =
@@ -78,49 +81,6 @@ const MAX_NUM_SEQS_HELP =
 const MAX_MODEL_LEN_HELP =
   "The maximum combined prompt and completion length accepted by the server. Longer contexts require more " +
   "KV cache per request and can reduce the number of requests served concurrently.";
-
-// The four metrics every sweep chart plots. Shared with the compare panel, which draws the same four
-// against two hand-picked series instead of the prompt lengths of one server.
-export const SPECS = [
-  {
-    id: "average_itl",
-    title: "Average ITL (s)",
-    description:
-      "Inter-token latency: the average gap between two consecutive tokens of one response. This is what streaming speed feels like to a single user.",
-    unit: "s",
-    metric: (p: BenchPoint) => p.average_itl,
-    format: formatSeconds,
-  },
-  {
-    id: "system_throughput",
-    title: "System throughput (tokens/s)",
-    description:
-      "Tokens generated per second by the whole system, counting the time spent on prefill.",
-    unit: " tok/s",
-    metric: (p: BenchPoint) => p.system_throughput,
-    format: formatTokens,
-  },
-  {
-    id: "median_ttft",
-    title: "Median TTFT (s)",
-    description:
-      "Time To First Token: how long a request waits before its first token comes back.",
-    unit: "s",
-    metric: (p: BenchPoint) => p.median_ttft,
-    format: formatSeconds,
-  },
-  // NaN (not 0) on artifacts profiled before this metric existed, so the line breaks instead of
-  // plotting a fake zero.
-  {
-    id: "system_decoding_throughput",
-    title: "System decoding throughput (tokens/s)",
-    description:
-      "Tokens per second the server emits while decoding, added up across the concurrent requests and excluding prefill.",
-    unit: " tok/s",
-    metric: (p: BenchPoint) => p.system_decoding_throughput ?? NaN,
-    format: formatTokens,
-  },
-];
 
 // One card per server: its own header, its own legend, and its own log-scale toggle — the three
 // servers are read one at a time, and a scale that suits one need not suit the next.
@@ -131,14 +91,27 @@ function BenchGroupSection({
   selectedMaxModelLen,
 }: {
   group: BenchGroup;
-  colorOf: (seriesId: string) => string;
+  colorOf: (concurrency: number) => string;
   stressTests: StressTestResult[];
   selectedMaxModelLen?: number | null;
 }) {
   const [logScale, setLogScale] = useState(false);
-  const { rows, seriesIds } = useMemo(() => pivotBySeries(group.points), [group.points]);
+  const { rows, concurrencies } = useMemo(() => pivotByPromptLength(group.points), [group.points]);
   const stressTest = stressTests.find((result) => result.max_num_seqs === group.maxNumSeqs);
   const serverMaxModelLen = stressTest?.max_model_len ?? selectedMaxModelLen;
+
+  // The stress test is one more (prompt length, TTFT) measurement — the full context, fired at a
+  // concurrency of exactly --max-num-seqs — so it extends the felt-TTFT chart to the context limit.
+  const ttftRows = useMemo(() => {
+    if (!stressTest) return rows;
+    const stressRow: BenchRow = {
+      promptTokens: stressTest.max_model_len - 1,
+      label: `${stressTest.max_model_len - 1} tokens`,
+      byConcurrency: {},
+      stressTtft: stressTest.median_ttft,
+    };
+    return [...rows, stressRow].sort((a, b) => a.promptTokens - b.promptTokens);
+  }, [rows, stressTest]);
 
   return (
     <section className="rounded-md border bg-card p-3">
@@ -148,7 +121,7 @@ function BenchGroupSection({
           {group.maxNumSeqs == null ? (
             // A legacy artifact, profiled before the sweep ran against several servers: there is no
             // --max-num-seqs to name it by.
-            "Performance vs request parallelism"
+            "Performance vs prompt length"
           ) : (
             <>
               <code className="font-mono">--max-num-seqs = {group.maxNumSeqs}</code>
@@ -163,18 +136,18 @@ function BenchGroupSection({
           ) : null}
         </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-4 text-xs text-muted-foreground">
-          {seriesIds.length > 1 || stressTest
-            ? seriesIds.map((id) => (
-                <span key={id} className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full" style={{ background: colorOf(id) }} />
-                  {id}
+          {concurrencies.length > 1 || stressTest
+            ? concurrencies.map((concurrency) => (
+                <span key={concurrency} className="flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full" style={{ background: colorOf(concurrency) }} />
+                  {concurrency} concurrent
                 </span>
               ))
             : null}
           {stressTest ? (
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: "#e34948" }} />
-              {stressTest.max_model_len - 1} tokens
+              full context
             </span>
           ) : null}
           <label className="flex cursor-pointer select-none items-center gap-1.5">
@@ -190,31 +163,35 @@ function BenchGroupSection({
             format={spec.format}
             key={spec.title}
             logScale={logScale}
-            points={rows}
-            pointKey={(row) => row.concurrent_requests}
+            points={spec.id === "median_ttft" ? ttftRows : rows}
+            pointKey={(row) => row.label}
             series={[
-              ...seriesIds.map((id) => ({
-                label: id,
-                color: colorOf(id),
-                value: (row: BenchRow) => (row.bySeries[id] ? spec.metric(row.bySeries[id]) : NaN),
+              ...concurrencies.map((concurrency) => ({
+                id: String(concurrency),
+                label: `${concurrency} concurrent`,
+                color: colorOf(concurrency),
+                value: (row: BenchRow) => {
+                  const point = row.byConcurrency[concurrency];
+                  return point ? spec.metric(point) : NaN;
+                },
+                hint: specHint(spec.hint, (row: BenchRow) => row.byConcurrency[concurrency]),
               })),
               ...(spec.id === "median_ttft" && stressTest
                 ? [{
                     id: "full-context-stress",
-                    label: `${stressTest.max_model_len - 1} tokens`,
+                    label: `full context, ${stressTest.max_num_seqs} concurrent`,
                     color: "#e34948",
-                    value: (row: BenchRow) => (
-                      row.concurrent_requests === stressTest.max_num_seqs ? stressTest.median_ttft : NaN
-                    ),
+                    value: (row: BenchRow) => row.stressTtft ?? NaN,
                   }]
                 : []),
             ]}
             title={spec.title}
-            tooltipTitle={(row) => `${row.concurrent_requests} concurrent`}
+            tooltipTitle={(row) => row.label}
             unit={spec.unit}
-            xAxisLabel="Concurrent requests"
-            xTickLabel={(row) => String(row.concurrent_requests)}
-            xValue={(row) => row.concurrent_requests}
+            xAxisLabel="Prompt tokens"
+            xScale="linear"
+            xTickLabel={(row) => formatTokens(row.promptTokens)}
+            xValue={(row) => row.promptTokens}
           />
         ))}
       </div>
@@ -234,15 +211,15 @@ export function BenchCharts({
   selectedMaxModelLen?: number | null;
 }) {
   const groups = useMemo(() => groupByMaxNumSeqs(points), [points]);
-  const seriesIds = useMemo(() => allSeriesIds(points), [points]);
-  const colorOf = (seriesId: string) => seriesColor(Math.max(0, seriesIds.indexOf(seriesId)));
+  const concurrencyValues = useMemo(() => allConcurrencyValues(points), [points]);
+  const colorOf = (concurrency: number) => seriesColor(Math.max(0, concurrencyValues.indexOf(concurrency)));
 
   if (points.length === 0) {
     return (
       <section className="rounded-md border bg-card p-3">
         <div className="flex items-center gap-2 text-sm font-medium">
           <LineChartIcon className="h-4 w-4" />
-          Performance vs request parallelism
+          Performance vs prompt length
         </div>
         <div className="py-8 text-center text-sm text-muted-foreground">
           {running ? "Charts will appear as benchmark points arrive." : "No benchmark data yet."}

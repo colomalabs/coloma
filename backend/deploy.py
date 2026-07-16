@@ -381,7 +381,7 @@ async def start_runtime(payload: DeployRuntimeStartRequest) -> DeployRuntimeStat
     )
     runtime_status = starting
 
-    # Remove any exited leftover so `docker run --name` won't conflict (finding 1).
+    # Remove any exited leftover so `docker run --name` won't conflict.
     await run_cli_command("docker", "rm", "-f", DEPLOY_CONTAINER_NAME, timeout=30)
 
     _, error = await run_cli_command(*cmd, timeout=30)
@@ -390,7 +390,7 @@ async def start_runtime(payload: DeployRuntimeStartRequest) -> DeployRuntimeStat
         raise HTTPException(status_code=500, detail=error)
 
     # `docker run -d` returns as soon as the container is created; a container that
-    # exits immediately (bad args, OOM) is not a successful launch (finding 2).
+    # exits immediately (bad args, OOM) is not a successful launch.
     if not await inspect_runtime_container():
         logs, _ = await run_cli_command("docker", "logs", "--tail", "50", DEPLOY_CONTAINER_NAME, timeout=10)
         detail = logs.strip() or "Container exited immediately after starting"

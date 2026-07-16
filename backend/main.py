@@ -17,7 +17,7 @@ from backend.logger import logger
 from backend.pressure import router as pressure_router
 from backend.profiler import reap_orphaned_jobs, router as profiler_router
 from backend.proxy import router as proxy_router
-from backend.tasks import spawn_background_task
+from backend.tasks import background_tasks, spawn_background_task
 from backend.verification import reset_verification_queue, verification_worker
 
 
@@ -34,6 +34,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     worker = spawn_background_task(verification_worker(), "verification-worker")
     yield
     worker.cancel()
+    # The proxy answers the client before its bookkeeping runs (the finalize-* tasks that write the
+    # tee record). Flush them on shutdown, or a stop right after a response — a test teardown, a
+    # graceful restart — loses records for requests the client was already told succeeded.
+    pending = [task for task in background_tasks if task is not worker]
+    if pending:
+        await asyncio.wait(pending, timeout=5)
 
 
 app = FastAPI(title="Coloma", lifespan=lifespan)

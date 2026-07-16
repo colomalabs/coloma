@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Paperclip, Send, Square, SquarePen, X } from "lucide-react";
 import { Button } from "./ui/button";
@@ -168,7 +168,7 @@ export function ChatTab() {
       total_tokens: 0,
     };
 
-  const models = modelsQuery.data?.models ?? [];
+  const models = useMemo(() => modelsQuery.data?.models ?? [], [modelsQuery.data?.models]);
   const schemaFields = configQuery.data?.app_config.validation.fields ?? [];
   const isEmpty = messages.length === 0;
 
@@ -406,7 +406,7 @@ export function ChatTab() {
               onChange={(event) => setStructuredOutput(event.target.checked)}
               type="checkbox"
             />
-            Structured outputs (from Proxy setings)
+            Structured outputs (from Proxy settings)
           </label>
         </div>
         <div className="flex items-center gap-4">

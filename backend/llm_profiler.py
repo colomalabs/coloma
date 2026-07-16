@@ -42,7 +42,14 @@ MAX_MODEL_LEN_ESTIMATION_RETRIES = 2
 # benchmark point exists to guide the user yet, so retry the *whole* sweep at half context twice before
 # surfacing a terminal error.
 MAX_SWEEP_OOM_MAX_MODEL_LEN_HALVING_RETRIES = 2
-COMPLETION_TOKENS = 10
+# Long enough that the mean ITL amortizes the slow tokens a request emits while its batch-mates
+# prefill, instead of measuring only that transient — 10 tokens made every --max-num-seqs look alike
+# because the sweep never reached the decode regime where the knob matters.
+DEFAULT_COMPLETION_TOKENS = 64
+MAX_COMPLETION_TOKENS = 4096
+# vLLM routinely refuses to boot with a context smaller than this, so a user-picked
+# --max-model-len below it would only trade a clear form error for an opaque startup crash.
+MIN_MAX_MODEL_LEN = 2048
 # How long a request may go without receiving a token before it is given up on.
 DEFAULT_TTFT_TIMEOUT = 30
 DEFAULT_STRESS_TEST_TIMEOUT = 180
@@ -61,6 +68,12 @@ class ProfilerConfig(BaseModel):
     timeout: int = 600
     ttft_timeout: int = DEFAULT_TTFT_TIMEOUT
     stress_test_timeout: int = DEFAULT_STRESS_TEST_TIMEOUT
+    # How many tokens every sweep request decodes. Prefill-heavy jobs can lower it, decode-heavy
+    # jobs (long answers) should raise it toward their real completion length.
+    completion_tokens: int = DEFAULT_COMPLETION_TOKENS
+    # None lets vLLM pick the model's own maximum context length; a value boots every server capped
+    # at it from the start instead of waiting for an OOM to force it down.
+    max_model_len: int | None = None
     max_num_seqs_values: list[int] = Field(default_factory=lambda: list(MAX_NUM_SEQS_VALUES))
     concurrent_request_values: list[int] = Field(default_factory=lambda: list(CONCURRENT_REQUEST_VALUES))
 
@@ -83,10 +96,18 @@ class ProfilerConfig(BaseModel):
 class BenchMeasurement(BaseModel):
     """What one batch fired at the server measured."""
     median_prompt_tokens: int
+    # Tokens each request decoded (median), so charts can label what the felt metrics amortize over.
+    completion_tokens: int
+    # Wall clock of the whole batch, first request sent to last one finished: the job time the
+    # calculator validates itself against.
+    duration: float
+    # Felt TTFT: the wait includes queueing behind the other requests of the batch.
     median_ttft: float
+    # Felt ITL: mean token gap over the whole response, slow start under co-resident prefill included.
     average_itl: float
+    # Steady-state ITL: median token gap, i.e. the decode step time once the batch has settled.
+    median_itl: float
     system_throughput: float
-    system_decoding_throughput: float
 
 
 class BenchPoint(BenchMeasurement):
@@ -226,6 +247,14 @@ def validate_config(config: ProfilerConfig) -> None:
         raise ValueError("gpu_mem must be in (0, 1]")
     if config.ttft_timeout < 1 or config.stress_test_timeout < 1:
         raise ValueError("TTFT timeouts must be positive")
+    # At least 2 so every request has a token gap to measure; mean/median ITL are meaningless below that.
+    if config.completion_tokens < 2 or config.completion_tokens > MAX_COMPLETION_TOKENS:
+        raise ValueError(f"completion_tokens must be between 2 and {MAX_COMPLETION_TOKENS}")
+    if config.max_model_len is not None:
+        if config.max_model_len < MIN_MAX_MODEL_LEN:
+            raise ValueError(f"max_model_len must be at least {MIN_MAX_MODEL_LEN}")
+        if config.max_model_len <= config.completion_tokens:
+            raise ValueError("max_model_len must leave room for the completion tokens")
     if config.port < 1 or config.port > 65_535:
         raise ValueError("port must be between 1 and 65535")
     for raw in (config.hf_home, config.vllm_home):
@@ -527,15 +556,17 @@ class LlmProfiler:
     async def run_batch(self, num_seqs: int, n_tokens: int) -> BenchMeasurement:
         prompts = await self.bench.build_prompts(self.config.model_name, num_seqs, n_tokens)
         start = perf_counter()
-        samples = await self.bench.run_batch(self.config.model_name, prompts, COMPLETION_TOKENS)
+        samples = await self.bench.run_batch(self.config.model_name, prompts, self.config.completion_tokens)
         delta = perf_counter() - start
 
         return BenchMeasurement(
             median_prompt_tokens=round(statistics.median(sample.prompt_tokens for sample in samples)),
+            completion_tokens=round(statistics.median(sample.completion_tokens for sample in samples)),
+            duration=delta,
             median_ttft=statistics.median(sample.ttft for sample in samples),
             average_itl=statistics.mean(sample.mean_itl for sample in samples),
+            median_itl=statistics.median(sample.median_itl for sample in samples),
             system_throughput=sum(sample.completion_tokens for sample in samples) / delta,
-            system_decoding_throughput=sum(sample.decoding_throughput for sample in samples),
         )
 
     async def run_full_context_stress(self, max_num_seqs: int, max_model_len: int) -> StressTestResult:
@@ -669,16 +700,15 @@ class LlmProfiler:
             raise RuntimeError(f"Container failed to start, logs:\n{''.join(logs)}")
         return int(match.group(1).replace(",", ""))
 
-    @staticmethod
-    def prompt_token_values(max_model_len: int) -> list[int]:
+    def prompt_token_values(self, max_model_len: int) -> list[int]:
         """The prompt lengths to benchmark, quadrupling up to what the server accepts. Each server
         boots on its own and may settle on a different context length, so this is recomputed per boot."""
         n_tokens_values = [1, 1024]
-        while n_tokens_values[-1] * 4 < max_model_len - COMPLETION_TOKENS:
+        while n_tokens_values[-1] * 4 < max_model_len - self.config.completion_tokens:
             n_tokens_values.append(n_tokens_values[-1] * 4)
 
         if n_tokens_values[-1] * 2 < max_model_len:
-            n_tokens_values.append(max_model_len - COMPLETION_TOKENS)
+            n_tokens_values.append(max_model_len - self.config.completion_tokens)
 
         return n_tokens_values
 
@@ -758,10 +788,9 @@ class LlmProfiler:
 
         return bench_points, False
 
-    @staticmethod
-    def _halve_max_model_len(max_model_len: int) -> int:
+    def _halve_max_model_len(self, max_model_len: int) -> int:
         # The completion must still fit, and avoid claiming we made progress once integer division bottoms out.
-        halved = max(COMPLETION_TOKENS + 1, max_model_len // 2)
+        halved = max(self.config.completion_tokens + 1, max_model_len // 2)
         if halved >= max_model_len:
             raise RuntimeError("CUDA out of memory and --max-model-len cannot be reduced further.")
         return halved
@@ -805,7 +834,9 @@ class LlmProfiler:
         )
 
     async def profile(self) -> ProfileResult:
-        requested_max_model_len: int | None = None
+        # Starts at the user's cap when one was configured; OOM recovery overwrites it with the
+        # halved retry length either way.
+        requested_max_model_len: int | None = self.config.max_model_len
         automatic_oom_retries = 0
 
         while True:
@@ -840,8 +871,7 @@ class LlmProfiler:
                         self.observer.set_benchmark_progress(swept, total)
                         if skipped:
                             raise BenchmarkSkipped()
-                        if stress_test is not None:
-                            completed_stress_tests.append(stress_test)
+                        completed_stress_tests.append(stress_test)
                         # This server is fully benchmarked, so the points behind us are enough to choose a
                         # deployment from: from here on the user may skip the rest.
                         self.observer.set_benchmark_skippable(True)
@@ -867,7 +897,7 @@ class LlmProfiler:
                         max_model_len=(
                             last_completed_stress_test.max_model_len
                             if last_completed_stress_test
-                            else best.median_prompt_tokens + COMPLETION_TOKENS
+                            else best.median_prompt_tokens + self.config.completion_tokens
                         ),
                         retry_max_model_len=retry_max_model_len,
                         failure_detail=oom.detail,

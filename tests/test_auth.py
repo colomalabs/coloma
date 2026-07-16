@@ -74,6 +74,29 @@ def test_proxy_accepts_backend_key_as_bearer_and_swaps_upstream_auth(monkeypatch
     assert response.status_code == 200
 
 
+def test_proxy_does_not_forward_backend_key_header_upstream(monkeypatch, tmp_path):
+    set_key(monkeypatch, "secret-key")
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    app_config = config.read_app_config()
+    app_config.proxy.api_key = "upstream-key"
+    app_config.proxy.db_path = str(tmp_path / "tee.sqlite3")
+    config.write_app_config(app_config)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert auth.API_KEY_HEADER not in request.headers
+        assert request.headers["authorization"] == "Bearer upstream-key"
+        return httpx.Response(200, json={"ok": True})
+
+    monkeypatch.setattr(upstream, "upstream_transport", httpx.MockTransport(handler))
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "m"},
+            headers={"X-API-Key": "secret-key"},
+        )
+    assert response.status_code == 200
+
+
 def test_api_endpoints_accept_bearer_key(monkeypatch, tmp_path):
     set_key(monkeypatch, "secret-key")
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from backend.config import read_app_config
 from backend.deploy import profiler_is_running
-from backend.llm_profiler import COMPLETION_TOKENS, DEFAULT_TTFT_TIMEOUT, vllm_base_url
+from backend.llm_profiler import DEFAULT_COMPLETION_TOKENS, DEFAULT_TTFT_TIMEOUT, vllm_base_url
 from backend.vllm_bench_client import RequestSample, VllmBenchClient
 
 router = APIRouter()
@@ -30,7 +30,7 @@ MAX_COMPLETION_TOKENS = 4096
 class PressureTestRequest(BaseModel):
     prompt_tokens: int = 1024
     num_seqs: int = 8
-    completion_tokens: int = COMPLETION_TOKENS
+    completion_tokens: int = DEFAULT_COMPLETION_TOKENS
     # Read timeout, like the profiler's: how long a request may go without receiving a token
     # before it is given up on. It is not a cap on the batch's total wall-clock time.
     ttft_timeout: int = DEFAULT_TTFT_TIMEOUT

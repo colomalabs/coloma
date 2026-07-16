@@ -70,7 +70,7 @@ function DeploymentActions({ controller }: { controller: DeploymentController })
           onClick={controller.deleteProfile}
           size="sm"
           type="button"
-          variant="outline"
+          variant="destructive"
         >
           {controller.deletePending ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />

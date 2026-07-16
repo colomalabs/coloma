@@ -8,6 +8,7 @@ import type { ProfilerController } from "./useProfilerController";
 
 const DEFAULT_MAX_NUM_SEQS_VALUES = [4, 16, 64];
 const DEFAULT_CONCURRENT_REQUEST_VALUES = [1, 2, 4, 8, 16, 32, 64, 128];
+const DEFAULT_COMPLETION_TOKENS = 64;
 
 export type ProfilerDockerState = {
   error: string;
@@ -33,9 +34,12 @@ export function ProfilerSetupForm({
   const [selectedImage, setSelectedImage] = useState("");
   const [model, setModel] = useState("");
   const [fp8, setFp8] = useState(true);
+  const [autoMaxModelLen, setAutoMaxModelLen] = useState(true);
+  const [maxModelLen, setMaxModelLen] = useState(16384);
   const [extraVllmArgs, setExtraVllmArgs] = useState("");
   const [ttftTimeout, setTtftTimeout] = useState(30);
   const [stressTestTimeout, setStressTestTimeout] = useState(180);
+  const [completionTokens, setCompletionTokens] = useState(DEFAULT_COMPLETION_TOKENS);
   const [maxNumSeqsValues, setMaxNumSeqsValues] = useState(DEFAULT_MAX_NUM_SEQS_VALUES);
   const [concurrentRequestValues, setConcurrentRequestValues] = useState(DEFAULT_CONCURRENT_REQUEST_VALUES);
   const inputsDisabled = controller.running || disabled;
@@ -47,9 +51,11 @@ export function ProfilerSetupForm({
       modelName,
       imageTag: selectedImage,
       fp8,
+      maxModelLen: autoMaxModelLen ? null : maxModelLen,
       extraVllmArgs,
       ttftTimeout,
       stressTestTimeout,
+      completionTokens,
       maxNumSeqsValues,
       concurrentRequestValues,
     });
@@ -105,6 +111,30 @@ export function ProfilerSetupForm({
             FP8 kv cache and quantization
           </label>
 
+          <label className="flex w-fit items-center gap-2 text-sm text-foreground" htmlFor="profile-auto-max-model-len">
+            <input
+              checked={autoMaxModelLen}
+              className="h-4 w-4 rounded border-input"
+              disabled={inputsDisabled}
+              id="profile-auto-max-model-len"
+              onChange={(event) => setAutoMaxModelLen(event.target.checked)}
+              type="checkbox"
+            />
+            Auto --max-model-len (the model&apos;s own maximum)
+          </label>
+          {!autoMaxModelLen ? (
+            // Keep the floor in sync with the backend's MIN_MAX_MODEL_LEN: vLLM routinely refuses
+            // to boot below 2048.
+            <NumberField
+              disabled={inputsDisabled}
+              id="profile-max-model-len"
+              label="--max-model-len"
+              min={Math.max(2048, completionTokens + 1)}
+              onChange={setMaxModelLen}
+              value={maxModelLen}
+            />
+          ) : null}
+
           <div className="grid gap-1.5">
             <label className="text-sm font-medium" htmlFor="profile-extra-vllm-args">
               Extra vLLM args
@@ -142,9 +172,17 @@ export function ProfilerSetupForm({
                 onChange={setStressTestTimeout}
                 value={stressTestTimeout}
               />
+              <NumberField
+                disabled={inputsDisabled}
+                id="profile-completion-tokens"
+                label="Completion tokens"
+                min={2}
+                onChange={setCompletionTokens}
+                value={completionTokens}
+              />
             </div>
             <BenchmarkValueEditor
-              description="The profiler restarts the server once for each value."
+              description=""
               disabled={inputsDisabled}
               id="profile-max-num-seqs-values"
               label="Server batch sizes (--max-num-seqs)"
@@ -152,7 +190,7 @@ export function ProfilerSetupForm({
               values={maxNumSeqsValues}
             />
             <BenchmarkValueEditor
-              description="Request counts tested against every server configuration."
+              description=""
               disabled={inputsDisabled}
               id="profile-concurrent-request-values"
               label="Concurrent requests"
@@ -168,6 +206,7 @@ export function ProfilerSetupForm({
                 onClick={() => {
                   setMaxNumSeqsValues(DEFAULT_MAX_NUM_SEQS_VALUES);
                   setConcurrentRequestValues(DEFAULT_CONCURRENT_REQUEST_VALUES);
+                  setCompletionTokens(DEFAULT_COMPLETION_TOKENS);
                 }}
                 size="sm"
                 type="button"
@@ -186,7 +225,7 @@ export function ProfilerSetupForm({
               disabled={controller.cancelPending}
               onClick={controller.cancel}
               type="button"
-              variant="outline"
+              variant="destructive"
             >
               {controller.cancelPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -315,12 +354,14 @@ function NumberField({
   value,
   disabled,
   onChange,
+  min = 1,
 }: {
   id: string;
   label: string;
   value: number;
   disabled: boolean;
   onChange: (value: number) => void;
+  min?: number;
 }) {
   return (
     <div className="inline-grid gap-1.5 align-top">
@@ -331,8 +372,8 @@ function NumberField({
         className="h-10 w-32 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
         disabled={disabled}
         id={id}
-        min={1}
-        onChange={(event) => onChange(Math.max(1, Math.round(Number(event.target.value) || 0)))}
+        min={min}
+        onChange={(event) => onChange(Math.max(min, Math.round(Number(event.target.value) || 0)))}
         type="number"
         value={value}
       />

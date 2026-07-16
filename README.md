@@ -1,7 +1,7 @@
 
 ![cover](./cover.png)
 
-### The Continuous Verification & Optimization layer for self-hosted LLMs
+### The Continuous Verification and Optimization layer for self-hosted LLMs
 
 Plugs into your self-hosted, OpenAI-compatible endpoint (vLLM, SGLang) and re-checks past predictions with a heavier verification pass on idle compute, catching regressions and building a ground-truth record without extra infrastructure.
 Optimizes requests on the way through to reduce latency.

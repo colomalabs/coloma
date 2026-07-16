@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, SkipForward, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Pencil, SkipForward, XCircle } from "lucide-react";
 import type { ProfilerStep } from "../../types";
+import { BenchCalculator } from "../BenchCalculator";
 import { BenchCharts } from "../BenchCharts";
 import { Button } from "../ui/button";
 import { ContextLengthWarnings } from "./ContextLengthWarnings";
@@ -9,10 +10,12 @@ import { WarningNotice } from "./WarningNotice";
 import type { ProfilerController } from "./useProfilerController";
 
 // "warning" is a display-only state (a finished-but-imperfect sweep); it is not a real ProfilerStepStatus.
-type IconStatus = ProfilerStep["status"] | "warning";
+// "editing" is a display-only state for a step that's idle, waiting on user input rather than working.
+type IconStatus = ProfilerStep["status"] | "warning" | "editing";
 
 function StepIcon({ status }: { status: IconStatus }) {
   if (status === "running") return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
+  if (status === "editing") return <Pencil className="h-4 w-4 text-muted-foreground" />;
   if (status === "done") return <CheckCircle2 className="h-4 w-4 text-emerald-600" />;
   if (status === "warning") return <AlertTriangle className="h-4 w-4 text-amber-500" />;
   if (status === "error") return <XCircle className="h-4 w-4 text-destructive" />;
@@ -130,8 +133,13 @@ export function ProfilerWorkflow({ controller }: { controller: ProfilerControlle
     status: configurationChosen ? "done" : configureStepBase.status === "error" ? "error" : "running",
     detail: configurationChosen
       ? ""
-      : "Use the charts below to pick the best values for your use case. All values in the charts below won't crash vLLM at runtime."
+      : "Use the charts below to pick the best values for your use case. All listed values are safe to use and won't crash vLLM."
   };
+  const configureIcon: IconStatus = configurationChosen
+    ? "done"
+    : configureStepBase.status === "error"
+      ? "error"
+      : "editing";
 
   return (
     // Keep chronological DOM order for assistive technology while showing the current step first.
@@ -185,8 +193,13 @@ export function ProfilerWorkflow({ controller }: { controller: ProfilerControlle
         </StepCard>
       ) : null}
 
+      {/* Estimates only make sense once the sweep has stopped adding points — and the place the user
+          wants them is right where the deploy values get picked. flex-col-reverse puts this between
+          the benchmark card and the configuration card. */}
+      {readyToConfigure && job.bench_points.length > 0 ? <BenchCalculator points={job.bench_points} /> : null}
+
       {readyToConfigure || oomRecoveryOptions ? (
-        <StepCard step={configureStep} title={configureStepBase.title}>
+        <StepCard icon={configureIcon} step={configureStep} title={configureStepBase.title}>
           {oomRecoveryOptions ? (
             <OomRecoveryForm
               disabled={controller.oomRecoveryPending}

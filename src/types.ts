@@ -143,6 +143,9 @@ export type RequestSample = {
   completion_tokens: number;
   ttft: number;
   mean_itl: number;
+  // Median token gap: the steady-state decode step time, robust to the slow start while
+  // batch-mates prefill.
+  median_itl: number;
 };
 
 export type PressureTestResult = {
@@ -172,11 +175,17 @@ export type BenchPoint = {
   series_id: string;
   concurrent_requests: number;
   median_prompt_tokens: number;
+  // Tokens each request decoded, and the batch's wall clock. Absent from artifacts profiled before
+  // the sweep recorded them; without them the calculator cannot show a measured residual.
+  completion_tokens?: number;
+  duration?: number;
+  // Felt TTFT: the median wait includes queueing behind the batch's other prompts.
   median_ttft: number;
+  // Felt ITL: mean token gap over the whole response, slow start under co-resident prefill included.
   average_itl: number;
+  // Steady-state ITL: median token gap once the batch settles. Absent from older artifacts.
+  median_itl?: number;
   system_throughput: number;
-  // Absent from artifacts profiled before this metric existed.
-  system_decoding_throughput?: number;
 };
 
 export type StressTestResult = {
@@ -220,6 +229,9 @@ export type ProfilerConfig = {
   timeout: number;
   ttft_timeout: number;
   stress_test_timeout: number;
+  completion_tokens: number;
+  // null lets vLLM pick the model's own maximum context length.
+  max_model_len: number | null;
   max_num_seqs_values: number[];
   concurrent_request_values: number[];
 };

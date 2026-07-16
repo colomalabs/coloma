@@ -38,7 +38,7 @@ class FakeBenchClient:
             index = self.in_flight
             # mean_itl of 0.1s => a decode rate of 10 tok/s per request.
             return RequestSample(prompt_tokens=512, completion_tokens=10, ttft=0.1 * index, mean_itl=0.1,
-                                 decoding_throughput=10.0)
+                                 median_itl=0.09, decoding_throughput=10.0)
         finally:
             self.in_flight -= 1
 

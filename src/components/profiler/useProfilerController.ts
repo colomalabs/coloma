@@ -18,9 +18,12 @@ export type ProfilerStartOptions = {
   modelName: string;
   imageTag: string;
   fp8: boolean;
+  // null lets vLLM pick the model's own maximum context length.
+  maxModelLen: number | null;
   extraVllmArgs: string;
   ttftTimeout: number;
   stressTestTimeout: number;
+  completionTokens: number;
   maxNumSeqsValues: number[];
   concurrentRequestValues: number[];
 };
@@ -50,9 +53,11 @@ export function useProfilerController({ apiKey, port }: { apiKey: string; port: 
             port,
             image_tag: options.imageTag,
             fp8: options.fp8,
+            max_model_len: options.maxModelLen,
             extra_vllm_args: options.extraVllmArgs.trim(),
             ttft_timeout: options.ttftTimeout,
             stress_test_timeout: options.stressTestTimeout,
+            completion_tokens: options.completionTokens,
             max_num_seqs_values: options.maxNumSeqsValues,
             concurrent_request_values: options.concurrentRequestValues,
           }),

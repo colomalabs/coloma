@@ -5,7 +5,7 @@ from urllib.parse import urljoin
 import httpx
 from fastapi import Request
 
-from backend.auth import bearer_token, is_backend_api_key
+from backend.auth import API_KEY_HEADER, bearer_token, is_backend_api_key
 from backend.config import DEFAULT_API_KEY, normalize_endpoint_url
 
 
@@ -58,15 +58,17 @@ def upstream_headers(request: Request, api_key: str) -> dict[str, str]:
     incoming_auth = ""
     for name, value in request.headers.items():
         lowered = name.lower()
-        if lowered in HOP_BY_HOP_HEADERS or lowered in {"host", "content-length"}:
+        # The dashboard key is dropped alongside the transport headers: it authenticates the
+        # caller to us and grants more than upstream access, so upstream must never see it.
+        if lowered in HOP_BY_HOP_HEADERS or lowered in {"host", "content-length", API_KEY_HEADER}:
             continue
         if lowered == "authorization":
             incoming_auth = value
             continue
         headers[name] = value
 
-    # Never forward the dashboard key upstream; substitute the configured
-    # upstream key when the caller authenticated with it.
+    # The same key sent the other way round, as a bearer token: drop it too and substitute
+    # the configured upstream key.
     if incoming_auth and is_backend_api_key(bearer_token(incoming_auth)):
         incoming_auth = ""
     headers["Authorization"] = incoming_auth or f"Bearer {api_key}"

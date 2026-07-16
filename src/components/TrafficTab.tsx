@@ -452,8 +452,8 @@ export function TrafficTab() {
     refetchInterval: REQUESTS_POLL_INTERVAL_MS,
   });
 
-  const active = data?.active ?? [];
-  const saved = data?.saved ?? [];
+  const active = useMemo(() => data?.active ?? [], [data?.active]);
+  const saved = useMemo(() => data?.saved ?? [], [data?.saved]);
   const message = error ? (error instanceof Error ? error.message : "Could not load requests") : "";
 
   const [onlyValidationFailures, setOnlyValidationFailures] = useState(false);

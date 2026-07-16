@@ -3,14 +3,14 @@ import {useMutation} from "@tanstack/react-query";
 import {AlertTriangle, Loader2, Play} from "lucide-react";
 import {Button} from "./ui/button";
 import {apiFetch, readJson} from "../lib/api";
-import {formatSeconds, formatTokens} from "./charts/SeriesChart";
+import { formatSeconds, formatTokens } from "./charts/chartFormatters";
 import {isJobActive, useActiveProfilerJob} from "../lib/queries";
 import type {PressureTestRequest, PressureTestResult} from "../types";
 
 const DEFAULT_FORM: PressureTestRequest = {
     prompt_tokens: 1024,
     num_seqs: 8,
-    completion_tokens: 10,
+    completion_tokens: 64,
     ttft_timeout: 30,
 };
 

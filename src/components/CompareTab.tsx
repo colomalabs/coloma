@@ -2,19 +2,20 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, readJson } from "../lib/api";
 import { useProfilerArtifacts } from "../lib/queries";
-import { SPECS } from "./BenchCharts";
+import { SPECS, specHint } from "./benchMetricSpecs";
 import { SeriesChart } from "./charts/SeriesChart";
+import { formatTokens } from "./charts/chartFormatters";
 import { BenchPoint, ProfilerArtifact, ProfilerArtifactSummary } from "../types";
 import {
   benchPoints,
   compareRows,
+  concurrentRequestsOptions,
   EMPTY_PICK,
   maxNumSeqsOptions,
   pickLabel,
   PICK_COLORS,
   resolvePick,
   selectedPoints,
-  seriesIdOptions,
   type CompareRow,
   type Pick,
   type PickId,
@@ -43,13 +44,13 @@ function PickRow({
 }: {
   pickId: PickId;
   pick: Pick;
-  resolved: { maxNumSeqs: number | null; seriesId: string | null };
+  resolved: { maxNumSeqs: number | null; concurrentRequests: number | null };
   artifacts: ProfilerArtifactSummary[];
   points: BenchPoint[];
   onChange: (pick: Pick) => void;
 }) {
   const seqsOptions = maxNumSeqsOptions(points);
-  const ids = seriesIdOptions(points, resolved.maxNumSeqs);
+  const concurrencies = concurrentRequestsOptions(points, resolved.maxNumSeqs);
   const noArtifact = pick.artifactId === null;
 
   return (
@@ -64,9 +65,9 @@ function PickRow({
         aria-label={`Profile ${pickId.toUpperCase()}`}
         className={`${SELECT_CLASS} flex-1`}
         onChange={(event) =>
-          // The new profile may not have the selected server/prompt length: clear them and let
+          // The new profile may not have the selected server/concurrency: clear them and let
           // resolvePick land on this artifact's own first options.
-          onChange({ artifactId: Number(event.target.value), maxNumSeqs: null, seriesId: null })
+          onChange({ artifactId: Number(event.target.value), maxNumSeqs: null, concurrentRequests: null })
         }
         value={pick.artifactId ?? ""}
       >
@@ -81,7 +82,7 @@ function PickRow({
         className={`${SELECT_CLASS} w-36`}
         disabled={noArtifact || seqsOptions.length === 0}
         onChange={(event) =>
-          onChange({ ...pick, maxNumSeqs: event.target.value === "" ? null : Number(event.target.value), seriesId: null })
+          onChange({ ...pick, maxNumSeqs: event.target.value === "" ? null : Number(event.target.value), concurrentRequests: null })
         }
         value={resolved.maxNumSeqs ?? ""}
       >
@@ -92,15 +93,15 @@ function PickRow({
         ))}
       </select>
       <select
-        aria-label={`Prompt tokens ${pickId.toUpperCase()}`}
+        aria-label={`Concurrent requests ${pickId.toUpperCase()}`}
         className={`${SELECT_CLASS} w-36`}
-        disabled={noArtifact || ids.length === 0}
-        onChange={(event) => onChange({ ...pick, seriesId: event.target.value })}
-        value={resolved.seriesId ?? ""}
+        disabled={noArtifact || concurrencies.length === 0}
+        onChange={(event) => onChange({ ...pick, concurrentRequests: Number(event.target.value) })}
+        value={resolved.concurrentRequests ?? ""}
       >
-        {ids.map((id) => (
-          <option key={id} value={id}>
-            {id}
+        {concurrencies.map((concurrency) => (
+          <option key={concurrency} value={concurrency}>
+            {concurrency} concurrent
           </option>
         ))}
       </select>
@@ -133,10 +134,10 @@ export function CompareTab() {
   const rows = useMemo(
     () =>
       compareRows(
-        selectedPoints(pointsA, resolvedA.maxNumSeqs, resolvedA.seriesId),
-        selectedPoints(pointsB, resolvedB.maxNumSeqs, resolvedB.seriesId),
+        selectedPoints(pointsA, resolvedA.maxNumSeqs, resolvedA.concurrentRequests),
+        selectedPoints(pointsB, resolvedB.maxNumSeqs, resolvedB.concurrentRequests),
       ),
-    [pointsA, pointsB, resolvedA.maxNumSeqs, resolvedA.seriesId, resolvedB.maxNumSeqs, resolvedB.seriesId],
+    [pointsA, pointsB, resolvedA.maxNumSeqs, resolvedA.concurrentRequests, resolvedB.maxNumSeqs, resolvedB.concurrentRequests],
   );
 
   const labelA = pickLabel(artifactA, resolvedA);
@@ -206,7 +207,7 @@ export function CompareTab() {
                       key={spec.title}
                       logScale={logScale}
                       points={rows}
-                      pointKey={(row) => row.concurrent_requests}
+                      pointKey={(row) => row.label}
                       series={[
                         {
                           // Keyed by the pick, not the label: A and B carry the same label whenever they
@@ -215,20 +216,23 @@ export function CompareTab() {
                           label: labelA,
                           color: PICK_COLORS.a,
                           value: (row: CompareRow) => (row.a ? spec.metric(row.a) : NaN),
+                          hint: specHint(spec.hint, (row: CompareRow) => row.a),
                         },
                         {
                           id: "b",
                           label: labelB,
                           color: PICK_COLORS.b,
                           value: (row: CompareRow) => (row.b ? spec.metric(row.b) : NaN),
+                          hint: specHint(spec.hint, (row: CompareRow) => row.b),
                         },
                       ]}
                       title={spec.title}
-                      tooltipTitle={(row) => `${row.concurrent_requests} concurrent`}
+                      tooltipTitle={(row) => row.label}
                       unit={spec.unit}
-                      xAxisLabel="Concurrent requests"
-                      xTickLabel={(row) => String(row.concurrent_requests)}
-                      xValue={(row) => row.concurrent_requests}
+                      xAxisLabel="Prompt tokens"
+                      xScale="linear"
+                      xTickLabel={(row) => formatTokens(row.promptTokens)}
+                      xValue={(row) => row.promptTokens}
                     />
                   ))}
                 </div>

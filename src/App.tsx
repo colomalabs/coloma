@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Dashboard } from "./components/Dashboard";
 import { DashboardAccessGate } from "./components/DashboardAccessGate";
-import { apiFetch, readJson, setStoredApiKey, UnauthorizedError, UNAUTHORIZED_EVENT } from "./lib/api";
+import { apiFetch, getStoredApiKey, readJson, setStoredApiKey, UnauthorizedError, UNAUTHORIZED_EVENT } from "./lib/api";
 
 export function App() {
   const [authAttempt, setAuthAttempt] = useState(0);
   const [reauthRequired, setReauthRequired] = useState(false);
+  const [keyRejected, setKeyRejected] = useState(false);
 
   const authQuery = useQuery({
     queryKey: ["auth", authAttempt],
@@ -19,6 +20,9 @@ export function App() {
   useEffect(() => {
     if (authQuery.error instanceof UnauthorizedError) {
       setReauthRequired(true);
+      // A rejected check that carried a key means that key is wrong. One that carried
+      // none has nothing to reject: the gate is only asking for a key, not refusing it.
+      setKeyRejected(getStoredApiKey() !== "");
     }
   }, [authQuery.error]);
 
@@ -41,10 +45,11 @@ export function App() {
   if (requiresAuthentication) {
     return (
       <DashboardAccessGate
-        invalidKey={authAttempt > 0}
+        invalidKey={keyRejected}
         onSubmit={(apiKey) => {
           setStoredApiKey(apiKey);
           setReauthRequired(false);
+          setKeyRejected(false);
           setAuthAttempt((current) => current + 1);
         }}
       />

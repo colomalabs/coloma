@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "license": "Apache-2.0",
-  "description": "The zero-cost verification + optimization layer for self-hosted LLMs",
+  "description": "The Continuous Verification and Optimization layer for self-hosted LLMs",
   "author": "Coloma Labs",
   "repository": {
     "type": "git",

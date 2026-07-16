@@ -1,17 +1,17 @@
 import { useMemo, useState, type MouseEvent } from "react";
 import { Info } from "lucide-react";
 
-export const CHART_WIDTH = 520;
-export const CHART_HEIGHT = 260;
-export const CHART_PAD = { top: 16, right: 20, bottom: 40, left: 60 };
+const CHART_WIDTH = 520;
+// The extra bottom padding (and the height compensating for it, keeping the plot area unchanged)
+// fits the tilted x tick labels plus the axis label under them.
+const CHART_HEIGHT = 272;
+const CHART_PAD = { top: 16, right: 20, bottom: 52, left: 60 };
 
-export function formatSeconds(value: number) {
-  return value >= 10 ? value.toFixed(1) : value.toFixed(2);
-}
-
-export function formatTokens(value: number) {
-  return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toFixed(0);
-}
+// On a linear x-axis the points can bunch (1 next to 1k, the longest sweep prompt next to the
+// full-context stress point). Tilting alone cannot save two anchors a few pixels apart — the
+// rotated labels just overlap in parallel — so a tick landing closer than this to the previously
+// labelled one keeps its point but loses its label; the tooltip still names it.
+const MIN_TICK_GAP = 18;
 
 function niceTicks(max: number, count = 4): number[] {
   if (max <= 0) return [0];
@@ -73,6 +73,9 @@ export type SeriesChartProps<T> = {
   points: T[];
   series: ChartSeries<T>[];
   logScale: boolean;
+  // How x positions are spaced: "log" suits an axis that grows by doubling (concurrency),
+  // "linear" keeps true proportions (prompt tokens).
+  xScale?: "linear" | "log";
   xValue: (point: T) => number;
   xTickLabel: (point: T) => string;
   xAxisLabel: string;
@@ -88,6 +91,7 @@ export function SeriesChart<T>({
   points,
   series,
   logScale,
+  xScale = "log",
   xValue,
   xTickLabel,
   xAxisLabel,
@@ -96,7 +100,7 @@ export function SeriesChart<T>({
 }: SeriesChartProps<T>) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const { xFor, yFor, yTicks, seriesValues } = useMemo(() => {
+  const { xFor, yFor, yTicks, seriesValues, labelledTicks } = useMemo(() => {
     const seriesValues = series.map((s) => points.map(s.value));
     const plotWidth = CHART_WIDTH - CHART_PAD.left - CHART_PAD.right;
     const plotHeight = CHART_HEIGHT - CHART_PAD.top - CHART_PAD.bottom;
@@ -117,14 +121,24 @@ export function SeriesChart<T>({
       yFor = (value) => CHART_PAD.top + plotHeight - (value / yTop) * plotHeight;
     }
 
-    const xs = points.map((p) => Math.log2(Math.max(xValue(p), 1)));
+    const xs = points.map((p) => (xScale === "linear" ? xValue(p) : Math.log2(Math.max(xValue(p), 1))));
     const xMin = xs[0] ?? 0;
     const xSpan = Math.max((xs[xs.length - 1] ?? 0) - xMin, 1e-9);
     const xFor = (index: number) =>
       points.length === 1 ? CHART_PAD.left + plotWidth / 2 : CHART_PAD.left + ((xs[index] - xMin) / xSpan) * plotWidth;
 
-    return { xFor, yFor, yTicks, seriesValues };
-  }, [points, series, logScale, xValue]);
+    // Assumes the caller's points arrive sorted by x, which both chart views guarantee.
+    const labelledTicks = new Set<number>();
+    let lastLabelX = Number.NEGATIVE_INFINITY;
+    for (let index = 0; index < points.length; index += 1) {
+      if (xFor(index) - lastLabelX >= MIN_TICK_GAP) {
+        labelledTicks.add(index);
+        lastLabelX = xFor(index);
+      }
+    }
+
+    return { xFor, yFor, yTicks, seriesValues, labelledTicks };
+  }, [points, series, logScale, xScale, xValue]);
 
   const onMove = (event: MouseEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -158,18 +172,21 @@ export function SeriesChart<T>({
             </text>
           </g>
         ))}
-        {points.map((point, index) => (
-          <text
-            key={pointKey(point)}
-            x={xFor(index)}
-            y={CHART_HEIGHT - CHART_PAD.bottom + 18}
-            textAnchor="middle"
-            className="fill-current text-muted-foreground"
-            fontSize={12}
-          >
-            {xTickLabel(point)}
-          </text>
-        ))}
+        {points.map((point, index) =>
+          labelledTicks.has(index) ? (
+            <text
+              key={pointKey(point)}
+              x={xFor(index)}
+              y={CHART_HEIGHT - CHART_PAD.bottom + 16}
+              textAnchor="end"
+              transform={`rotate(-35 ${xFor(index)} ${CHART_HEIGHT - CHART_PAD.bottom + 16})`}
+              className="fill-current text-muted-foreground"
+              fontSize={12}
+            >
+              {xTickLabel(point)}
+            </text>
+          ) : null,
+        )}
         <text
           x={(CHART_PAD.left + CHART_WIDTH - CHART_PAD.right) / 2}
           y={CHART_HEIGHT - 4}
@@ -237,6 +254,7 @@ export function SeriesChart<T>({
           <div className="font-medium">{tooltipTitle(points[hoverIndex])}</div>
           {series.map((s, seriesIndex) => {
             const value = seriesValues[seriesIndex][hoverIndex];
+            const hint = Number.isFinite(value) ? s.hint?.(points[hoverIndex]) : "";
             return (
               <div key={s.id ?? s.label} className="mt-0.5 flex items-center gap-1.5 whitespace-nowrap text-muted-foreground">
                 {series.length > 1 ? <span className="h-2 w-2 rounded-full" style={{ background: s.color }} /> : null}
@@ -244,6 +262,7 @@ export function SeriesChart<T>({
                 <span className="font-mono text-foreground">
                   {Number.isFinite(value) ? `${format(value)}${unit}` : "—"}
                 </span>
+                {hint ? <span className="text-muted-foreground/80">({hint})</span> : null}
               </div>
             );
           })}

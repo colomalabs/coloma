@@ -8,9 +8,10 @@ from httpx import Request
 from openai import APITimeoutError
 
 from backend.llm_profiler import (
-    COMPLETION_TOKENS,
+    DEFAULT_COMPLETION_TOKENS,
     MAX_SWEEP_OOM_MAX_MODEL_LEN_HALVING_RETRIES,
     MAX_NUM_SEQS_VALUES,
+    MIN_MAX_MODEL_LEN,
     BenchmarkSkipped,
     BenchPoint,
     OomRecoveryOptions,
@@ -23,6 +24,7 @@ from backend.llm_profiler import (
     StressTestResult,
     validate_config,
 )
+from backend.vllm_bench_client import RequestSample
 
 
 def test_profiler_cache_defaults_use_standard_home_cache_paths():
@@ -185,8 +187,8 @@ def test_skipping_the_sweep_keeps_the_points_already_measured():
             observer.skip_event.set()
             await asyncio.sleep(60)
         return BenchMeasurement(
-            median_prompt_tokens=n_tokens, median_ttft=0.2, average_itl=0.01, system_throughput=120.0,
-            system_decoding_throughput=100.0,
+            median_prompt_tokens=n_tokens, completion_tokens=128, duration=2.0, median_ttft=0.2,
+            average_itl=0.01, median_itl=0.008, system_throughput=120.0,
         )
 
     profiler.run_batch = fake_batch
@@ -212,8 +214,8 @@ def test_sweep_point_returns_its_measurement_when_no_skip_is_requested():
     profiler = make_profiler(observer)
 
     measurement = BenchMeasurement(
-        median_prompt_tokens=1024, median_ttft=0.2, average_itl=0.01, system_throughput=120.0,
-        system_decoding_throughput=100.0,
+        median_prompt_tokens=1024, completion_tokens=128, duration=2.0, median_ttft=0.2,
+        average_itl=0.01, median_itl=0.008, system_throughput=120.0,
     )
 
     async def fake_batch(num_seqs, n_tokens):
@@ -228,6 +230,48 @@ def test_sweep_point_returns_its_measurement_when_no_skip_is_requested():
             await profiler.bench.aclose()
 
     assert asyncio.run(scenario()) == measurement
+
+
+def test_run_batch_measures_the_batch_wall_clock_at_the_configured_completion_length():
+    observer = SkipObserver()
+    config = ProfilerConfig(model_name="test-model", completion_tokens=64)
+    profiler = make_profiler(observer, config)
+    batches: list[tuple[int, int]] = []
+
+    class FakeBench:
+        async def build_prompts(self, model_name, num_seqs, n_tokens):
+            return ["prompt"] * num_seqs
+
+        async def run_batch(self, model_name, prompts, completion_tokens):
+            batches.append((len(prompts), completion_tokens))
+            return [
+                RequestSample(prompt_tokens=1024, completion_tokens=64, ttft=0.5 * index,
+                              mean_itl=0.05 * index, median_itl=0.01 * index, decoding_throughput=20.0)
+                for index in (1, 2, 3)
+            ]
+
+        async def aclose(self):
+            pass
+
+    async def scenario():
+        real_bench = profiler.bench
+        profiler.bench = FakeBench()
+        try:
+            return await profiler.run_batch(3, 1024)
+        finally:
+            await real_bench.aclose()
+
+    measured = asyncio.run(scenario())
+
+    # The sweep decodes the configured number of tokens, not a hardcoded one.
+    assert batches == [(3, 64)]
+    assert measured.completion_tokens == 64
+    # The batch's wall clock is kept: it is the job duration the calculator validates against.
+    assert measured.duration > 0.0
+    assert measured.median_ttft == pytest.approx(1.0)
+    assert measured.average_itl == pytest.approx(0.1)
+    assert measured.median_itl == pytest.approx(0.02)
+    assert measured.system_throughput > 0.0
 
 
 def test_sweep_records_openai_api_timeout_and_keeps_prior_points():
@@ -284,8 +328,8 @@ def test_sweep_point_abandons_the_in_flight_batch_when_the_user_skips():
 
 
 MEASUREMENT = BenchMeasurement(
-    median_prompt_tokens=1024, median_ttft=0.2, average_itl=0.01, system_throughput=120.0,
-    system_decoding_throughput=100.0,
+    median_prompt_tokens=1024, completion_tokens=128, duration=2.0, median_ttft=0.2,
+    average_itl=0.01, median_itl=0.008, system_throughput=120.0,
 )
 
 
@@ -400,6 +444,51 @@ def test_profile_uses_the_benchmark_grid_from_its_config():
 def test_profiler_config_rejects_invalid_benchmark_values(field, values):
     with pytest.raises(ValueError):
         ProfilerConfig(model_name="test-model", **{field: values})
+
+
+def test_profiler_config_rejects_a_max_model_len_below_the_vllm_floor():
+    config = ProfilerConfig(model_name="test-model", max_model_len=MIN_MAX_MODEL_LEN - 1)
+
+    with pytest.raises(ValueError, match="at least"):
+        validate_config(config)
+
+
+def test_profiler_config_rejects_a_max_model_len_without_room_for_the_completion():
+    config = ProfilerConfig(model_name="test-model", completion_tokens=4096, max_model_len=MIN_MAX_MODEL_LEN)
+
+    with pytest.raises(ValueError, match="room for the completion"):
+        validate_config(config)
+
+
+def test_profile_boots_servers_at_the_configured_max_model_len():
+    observer = ProfileObserver()
+    config = ProfilerConfig(
+        model_name="test-model", max_model_len=4096, max_num_seqs_values=[8], concurrent_request_values=[1]
+    )
+    profiler = make_profiler(observer, config)
+    booted: list[int | None] = []
+
+    async def fake_start(max_num_seqs: int, requested_max_model_len: int | None = None) -> ServerInfo:
+        booted.append(requested_max_model_len)
+        return ServerInfo(kv_token_size=100_000, max_model_len=requested_max_model_len or 8192, logs=[])
+
+    async def fake_batch(num_seqs, n_tokens):
+        return MEASUREMENT
+
+    profiler.start_vllm_instance = fake_start
+    profiler.run_batch = fake_batch
+    profiler.stop_vllm_docker = lambda: None
+
+    async def scenario():
+        try:
+            return await profiler.profile()
+        finally:
+            await profiler.bench.aclose()
+
+    asyncio.run(scenario())
+
+    # The user's cap reaches the server boot instead of vLLM's own maximum.
+    assert booted == [4096]
 
 
 def test_profile_stresses_every_server_at_full_context_before_sweeping():
@@ -866,8 +955,10 @@ def test_oom_after_a_working_point_offers_bounded_deployment_instead_of_an_autom
     result = asyncio.run(scenario())
 
     assert observer.reset_count == 0
-    assert observer.oom_options == [OomRecoveryOptions(max_num_seqs=4, max_model_len=1024 + COMPLETION_TOKENS, retry_max_model_len=4096)]
-    assert (result.selected_max_num_seqs, result.selected_max_model_len) == (4, 1024 + COMPLETION_TOKENS)
+    assert observer.oom_options == [
+        OomRecoveryOptions(max_num_seqs=4, max_model_len=1024 + DEFAULT_COMPLETION_TOKENS, retry_max_model_len=4096)
+    ]
+    assert (result.selected_max_num_seqs, result.selected_max_model_len) == (4, 1024 + DEFAULT_COMPLETION_TOKENS)
 
 
 # A crash dump shaped like vLLM's: the exception that killed the engine is buried under the teardown

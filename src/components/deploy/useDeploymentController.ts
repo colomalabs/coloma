@@ -124,7 +124,7 @@ export function useDeploymentController({
       setSelectedProfileId(profilerJob.artifact_id);
     }
     previousJobRef.current = profilerJob ? { id: profilerJob.id, status: profilerJob.status } : null;
-  }, [profilerJob?.id, profilerJob?.status, profilerJob?.artifact_id, queryClient]);
+  }, [profilerJob, queryClient]);
 
   const command = runtimeActive ? runtime.command : commandPreview?.command ?? "";
 
