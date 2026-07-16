@@ -383,15 +383,26 @@ class LlmProfiler:
             text=True,
         )
         self.observer.set_process(proc)
+        output_tail = ""
+
+        def _drain_output() -> None:
+            nonlocal output_tail
+            if proc.stdout is None:
+                return
+            while chunk := proc.stdout.read(4096):
+                output_tail = (output_tail + chunk)[-4000:]
+
+        drain_thread = threading.Thread(target=_drain_output, daemon=True)
+        drain_thread.start()
         try:
             while proc.poll() is None:
                 self._check_cancelled()
                 await asyncio.sleep(1)
         finally:
             self.observer.set_process(None)
+        drain_thread.join(timeout=5)
         if proc.returncode != 0:
-            output = proc.stdout.read() if proc.stdout else ""
-            raise RuntimeError(f"Model download failed:\n{output[-4000:]}")
+            raise RuntimeError(f"Model download failed:\n{output_tail}")
         self.observer.update_step(STEP_DOWNLOAD, "done", detail=f"Downloaded {self.config.model_name}")
 
     def stop_vllm_docker(self) -> None:

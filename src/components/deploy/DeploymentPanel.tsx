@@ -2,6 +2,7 @@ import { Check, Copy, Loader2, Pencil, Play, Square, Terminal, Trash2 } from "lu
 import { useCopyToClipboard } from "../../lib/clipboard";
 import type { ProfilerArtifact, ProfilerArtifactSummary } from "../../types";
 import { Button } from "../ui/button";
+import { InfoNotice } from "../ui/info-notice";
 import type { DeploymentController } from "./useDeploymentController";
 
 function ProfileSelector({
@@ -160,6 +161,9 @@ export function DeploymentPanel({ controller }: { controller: DeploymentControll
         </div>
       </div>
 
+      {controller.profilerRunning && !controller.runtimeActive ? (
+        <InfoNotice>Deploy is disabled while a profile is running.</InfoNotice>
+      ) : null}
       {controller.profilesError ? <p className="text-xs text-destructive">{controller.profilesError}</p> : null}
       {controller.kvTokenSize != null ? (
         <p className="text-xs text-muted-foreground">

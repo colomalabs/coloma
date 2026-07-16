@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertTriangle, Gauge, Loader2, Plus, RotateCcw, X, XCircle } from "lucide-react";
 import type { DockerPullStatus } from "../../types";
 import { Button } from "../ui/button";
+import { InfoNotice } from "../ui/info-notice";
 import { DockerImageSelector } from "./DockerImageSelector";
 import type { ProfilerController } from "./useProfilerController";
 
@@ -19,12 +20,14 @@ export type ProfilerDockerState = {
 type ProfilerSetupFormProps = {
   controller: ProfilerController;
   disabled: boolean;
+  disabledReason?: string;
   docker: ProfilerDockerState;
 };
 
 export function ProfilerSetupForm({
   controller,
   disabled,
+  disabledReason,
   docker,
 }: ProfilerSetupFormProps) {
   const [selectedImage, setSelectedImage] = useState("");
@@ -54,6 +57,7 @@ export function ProfilerSetupForm({
 
   return (
     <div className="space-y-4">
+      {disabled && disabledReason ? <InfoNotice>{disabledReason}</InfoNotice> : null}
       {docker.isPending ? (
         <div className="h-10 animate-pulse rounded-md border bg-muted" />
       ) : docker.error ? (

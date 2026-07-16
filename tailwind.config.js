@@ -9,7 +9,7 @@ export default {
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         display: ["Space Grotesk", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["Space Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", "Courier New", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",

@@ -130,9 +130,7 @@ export function ProfilerWorkflow({ controller }: { controller: ProfilerControlle
     status: configurationChosen ? "done" : configureStepBase.status === "error" ? "error" : "running",
     detail: configurationChosen
       ? ""
-      : oomRecoveryOptions
-        ? "All values in the chart below won't crash vLLM at runtime."
-        : "These two values go into the Docker command below. They are what the deployment admits: how many requests it serves at once, and how large a request it accepts at all.",
+      : "Use the charts below to pick the best values for your use case. All values in the charts below won't crash vLLM at runtime."
   };
 
   return (
@@ -204,7 +202,6 @@ export function ProfilerWorkflow({ controller }: { controller: ProfilerControlle
               defaultMaxNumSeqs={Math.max(1, ...job.benchmarked_max_num_seqs_values)}
               disabled={controller.choosePending}
               error={controller.chooseError}
-              kvTokenSize={job.kv_token_size}
               onChoose={controller.chooseDeployConfig}
               serverMaxModelLen={job.server_max_model_len}
             />
@@ -217,7 +214,7 @@ export function ProfilerWorkflow({ controller }: { controller: ProfilerControlle
             </pre>
           ) : null}
           {job.status === "done" ? (
-            <p className="flex items-center gap-2 text-sm text-emerald-600">
+            <p className="flex items-center gap-2 text-sm text-primary">
               Profile saved.
             </p>
           ) : null}

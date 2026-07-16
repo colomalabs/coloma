@@ -7,11 +7,13 @@ export function ProfilerSection({
   port,
   docker,
   disabled = false,
+  disabledReason,
 }: {
   apiKey: string;
   port: number;
   docker: ProfilerDockerState;
   disabled?: boolean;
+  disabledReason?: string;
 }) {
   const controller = useProfilerController({ apiKey, port });
 
@@ -20,6 +22,7 @@ export function ProfilerSection({
       <ProfilerSetupForm
         controller={controller}
         disabled={disabled}
+        disabledReason={disabledReason}
         docker={docker}
       />
       <ProfilerWorkflow controller={controller} />

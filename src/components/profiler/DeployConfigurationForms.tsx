@@ -40,14 +40,12 @@ function DeployField({
 }
 
 export function DeployConfigForm({
-  kvTokenSize,
   serverMaxModelLen,
   defaultMaxNumSeqs,
   disabled,
   onChoose,
   error,
 }: {
-  kvTokenSize: number;
   serverMaxModelLen: number;
   defaultMaxNumSeqs: number;
   disabled: boolean;
@@ -56,7 +54,6 @@ export function DeployConfigForm({
 }) {
   const [maxNumSeqs, setMaxNumSeqs] = useState(defaultMaxNumSeqs);
   const [maxModelLen, setMaxModelLen] = useState(serverMaxModelLen);
-  const fullContextRequests = Math.floor(kvTokenSize / Math.max(1, maxModelLen));
 
   return (
     <div className="space-y-4">
@@ -74,18 +71,6 @@ export function DeployConfigForm({
         onChange={setMaxModelLen}
         value={maxModelLen}
       />
-      <p className="text-xs text-muted-foreground">
-        The KV cache holds {kvTokenSize.toLocaleString()} tokens, so{" "}
-        <span className="font-medium text-foreground">{fullContextRequests.toLocaleString()}</span> request
-        {fullContextRequests === 1 ? "" : "s"} can use the full context length at once.
-        {fullContextRequests < maxNumSeqs ? (
-          <>
-            {" "}
-            Above that, vLLM preempts and recomputes sequences rather than refusing them — fine if your requests
-            are usually much shorter than the limit.
-          </>
-        ) : null}
-      </p>
       <Button
         disabled={disabled}
         onClick={() => onChoose(maxNumSeqs, maxModelLen)}

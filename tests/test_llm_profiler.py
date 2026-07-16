@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -132,6 +133,46 @@ def make_profiler(observer: SkipObserver, config: ProfilerConfig | None = None) 
 
     profiler.run_full_context_stress = skip_full_context_stress
     return profiler
+
+
+def test_model_download_drains_output_while_process_is_running(monkeypatch, tmp_path):
+    drained = threading.Event()
+
+    class LargeOutput:
+        remaining = 1_000_000
+
+        def read(self, size: int) -> str:
+            if self.remaining == 0:
+                drained.set()
+                return ""
+            count = min(size, self.remaining)
+            self.remaining -= count
+            return "x" * count
+
+    class OutputBoundProcess:
+        def __init__(self):
+            self.stdout = LargeOutput()
+            self.returncode = None
+
+        def poll(self):
+            if drained.wait(timeout=0.2):
+                self.returncode = 0
+            return self.returncode
+
+    monkeypatch.setattr("backend.llm_profiler.subprocess.Popen", lambda *args, **kwargs: OutputBoundProcess())
+    observer = SkipObserver()
+    config = ProfilerConfig(model_name="test-model", hf_home=str(tmp_path / "hf"))
+    profiler = LlmProfiler(config, "fake-container", observer)
+
+    async def scenario():
+        try:
+            await profiler.download_model()
+        finally:
+            await profiler.bench.aclose()
+
+    asyncio.run(scenario())
+
+    assert drained.is_set()
 
 
 def test_skipping_the_sweep_keeps_the_points_already_measured():

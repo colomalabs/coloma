@@ -20,7 +20,7 @@ function XIcon() {
 
 function SocialLinks() {
   return (
-    <div className="flex items-center gap-1 text-muted-foreground">
+    <div className="flex w-full items-center justify-center gap-1 text-muted-foreground">
       <a
         aria-label="GitHub repository"
         className="rounded-md p-1.5 hover:bg-muted hover:text-foreground"

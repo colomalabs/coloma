@@ -37,6 +37,7 @@ export function DeployTab() {
             <ProfilerSection
               apiKey={configData?.app_config.deployment.api_key ?? ""}
               disabled={deployment.runtimeActive}
+              disabledReason="Stop the running deployment to start a new profiling run."
               docker={{
                 error: data?.docker_error ?? "",
                 images: data?.docker_images ?? [],

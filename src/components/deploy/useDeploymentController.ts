@@ -185,6 +185,7 @@ export function useDeploymentController({
     profiles,
     profilesError,
     profilesPending,
+    profilerRunning,
     runtimeActive,
     selectedArtifact,
     selectedArtifactPending,
