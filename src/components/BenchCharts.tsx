@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { LineChart as LineChartIcon } from "lucide-react";
 import { MetricInfo, SeriesChart } from "./charts/SeriesChart";
 import { formatTokens } from "./charts/chartFormatters";
-import { SPECS, specHint } from "./benchMetricSpecs";
+import { SPECS } from "./benchMetricSpecs";
 import { promptTokensOf } from "../lib/benchPoints";
 import { BenchPoint, StressTestResult } from "../types";
 
@@ -174,7 +174,6 @@ function BenchGroupSection({
                   const point = row.byConcurrency[concurrency];
                   return point ? spec.metric(point) : NaN;
                 },
-                hint: specHint(spec.hint, (row: BenchRow) => row.byConcurrency[concurrency]),
               })),
               ...(spec.id === "median_ttft" && stressTest
                 ? [{

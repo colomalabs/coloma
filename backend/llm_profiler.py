@@ -47,9 +47,6 @@ MAX_SWEEP_OOM_MAX_MODEL_LEN_HALVING_RETRIES = 2
 # because the sweep never reached the decode regime where the knob matters.
 DEFAULT_COMPLETION_TOKENS = 64
 MAX_COMPLETION_TOKENS = 4096
-# vLLM routinely refuses to boot with a context smaller than this, so a user-picked
-# --max-model-len below it would only trade a clear form error for an opaque startup crash.
-MIN_MAX_MODEL_LEN = 2048
 # How long a request may go without receiving a token before it is given up on.
 DEFAULT_TTFT_TIMEOUT = 30
 DEFAULT_STRESS_TEST_TIMEOUT = 180
@@ -105,8 +102,6 @@ class BenchMeasurement(BaseModel):
     median_ttft: float
     # Felt ITL: mean token gap over the whole response, slow start under co-resident prefill included.
     average_itl: float
-    # Steady-state ITL: median token gap, i.e. the decode step time once the batch has settled.
-    median_itl: float
     system_throughput: float
 
 
@@ -247,12 +242,10 @@ def validate_config(config: ProfilerConfig) -> None:
         raise ValueError("gpu_mem must be in (0, 1]")
     if config.ttft_timeout < 1 or config.stress_test_timeout < 1:
         raise ValueError("TTFT timeouts must be positive")
-    # At least 2 so every request has a token gap to measure; mean/median ITL are meaningless below that.
+    # At least 2 so every request has a token gap to measure; mean ITL is meaningless below that.
     if config.completion_tokens < 2 or config.completion_tokens > MAX_COMPLETION_TOKENS:
         raise ValueError(f"completion_tokens must be between 2 and {MAX_COMPLETION_TOKENS}")
     if config.max_model_len is not None:
-        if config.max_model_len < MIN_MAX_MODEL_LEN:
-            raise ValueError(f"max_model_len must be at least {MIN_MAX_MODEL_LEN}")
         if config.max_model_len <= config.completion_tokens:
             raise ValueError("max_model_len must leave room for the completion tokens")
     if config.port < 1 or config.port > 65_535:
@@ -565,7 +558,6 @@ class LlmProfiler:
             duration=delta,
             median_ttft=statistics.median(sample.ttft for sample in samples),
             average_itl=statistics.mean(sample.mean_itl for sample in samples),
-            median_itl=statistics.median(sample.median_itl for sample in samples),
             system_throughput=sum(sample.completion_tokens for sample in samples) / delta,
         )
 
@@ -703,12 +695,15 @@ class LlmProfiler:
     def prompt_token_values(self, max_model_len: int) -> list[int]:
         """The prompt lengths to benchmark, quadrupling up to what the server accepts. Each server
         boots on its own and may settle on a different context length, so this is recomputed per boot."""
-        n_tokens_values = [1, 1024]
-        while n_tokens_values[-1] * 4 < max_model_len - self.config.completion_tokens:
+        max_prompt_tokens = max_model_len - self.config.completion_tokens
+        n_tokens_values = [1]
+        if max_prompt_tokens > 1:
+            n_tokens_values.append(min(1024, max_prompt_tokens))
+        while n_tokens_values[-1] * 4 < max_prompt_tokens:
             n_tokens_values.append(n_tokens_values[-1] * 4)
 
-        if n_tokens_values[-1] * 2 < max_model_len:
-            n_tokens_values.append(max_model_len - self.config.completion_tokens)
+        if n_tokens_values[-1] * 2 < max_prompt_tokens:
+            n_tokens_values.append(max_prompt_tokens)
 
         return n_tokens_values
 

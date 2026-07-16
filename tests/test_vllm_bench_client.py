@@ -26,11 +26,11 @@ class FakeStream:
             raise StopAsyncIteration from None
 
 
-def test_measure_completion_splits_felt_and_steady_state_itl(monkeypatch):
-    # perf_counter values consumed in order: request start, one per content chunk, stream end.
-    # The 0.9s gap is a decode stalled behind a batch-mate's prefill: it belongs in the felt mean
-    # but must not move the steady-state median.
-    timestamps = iter([0.0, 1.0, 1.1, 2.0, 2.1, 2.2, 3.0])
+def test_measure_completion_uses_token_count_for_mean_itl(monkeypatch):
+    # perf_counter values consumed in order: request start, first content chunk, stream end.
+    # Content chunks need not map one-to-one to tokens. Mean ITL uses the completion token count
+    # reported by usage rather than trying to infer token gaps from chunk arrival times.
+    timestamps = iter([0.0, 1.0, 3.0])
     monkeypatch.setattr(vllm_bench_client, "perf_counter", lambda: next(timestamps))
 
     usage = SimpleNamespace(prompt_tokens=512, completion_tokens=5)
@@ -57,8 +57,6 @@ def test_measure_completion_splits_felt_and_steady_state_itl(monkeypatch):
     assert sample.ttft == pytest.approx(1.0)
     # 4 decoded tokens over the (3.0 - 1.0)s after the first one.
     assert sample.mean_itl == pytest.approx(0.5)
-    # Gaps are 0.1, 0.9, 0.1, 0.1: the stall is excluded from the median.
-    assert sample.median_itl == pytest.approx(0.1)
     assert sample.decoding_throughput == pytest.approx(2.0)
     # Random-token prompts can hit EOS early; the bench must decode the full completion length.
     assert created["extra_body"] == {"ignore_eos": True}

@@ -1,7 +1,5 @@
 import asyncio
 import random
-import statistics
-from itertools import pairwise
 from time import perf_counter
 
 import httpx
@@ -23,9 +21,6 @@ class RequestSample(BaseModel):
     # Mean gap between consecutive tokens over the whole response: what streaming feels like,
     # including the slow tokens emitted while batch-mates were still prefilling.
     mean_itl: float
-    # Median gap: the steady-state decode step time once co-resident prefills have drained.
-    # Robust to the slow start, so it estimates the same quantity at any completion length.
-    median_itl: float
     decoding_throughput: float
 
 
@@ -61,9 +56,7 @@ class VllmBenchClient:
             self, model_name: str, prompt: str, completion_tokens: int
     ) -> RequestSample:
         usage = None
-        # One timestamp per content chunk. vLLM streams one token per chunk, so the gaps between
-        # them are the inter-token gaps.
-        chunk_timestamps: list[float] = []
+        first_token_timestamp = None
 
         start = perf_counter()
         stream = await self.client.chat.completions.create(
@@ -80,19 +73,17 @@ class VllmBenchClient:
         async for chunk in stream:
             if chunk.usage:
                 usage = chunk.usage
-            if chunk.choices and chunk.choices[0] and chunk.choices[0].delta.content:
-                chunk_timestamps.append(perf_counter())
+            if first_token_timestamp is None and chunk.choices and chunk.choices[0] and chunk.choices[0].delta.content:
+                first_token_timestamp = perf_counter()
 
-        if not usage or usage.completion_tokens == 0 or not chunk_timestamps:
+        if not usage or usage.completion_tokens == 0 or first_token_timestamp is None:
             raise RuntimeError("Model generated 0 tokens.")
 
         end = perf_counter()
-        first_token_timestamp = chunk_timestamps[0]
         ttft = first_token_timestamp - start
         decoded_tokens = usage.completion_tokens - 1
         decoding_duration = end - first_token_timestamp
         mean_itl = decoding_duration / decoded_tokens if decoded_tokens else 0.0
-        gaps = [after - before for before, after in pairwise(chunk_timestamps)]
         decoding_throughput = decoded_tokens / decoding_duration if decoded_tokens else 0.0
 
         return RequestSample(
@@ -100,7 +91,6 @@ class VllmBenchClient:
             completion_tokens=usage.completion_tokens,
             ttft=ttft,
             mean_itl=mean_itl,
-            median_itl=statistics.median(gaps) if gaps else 0.0,
             decoding_throughput=decoding_throughput,
         )
 

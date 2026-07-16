@@ -4,9 +4,8 @@
 //  - prefill time per request, a(P): from the felt TTFT of the least concurrent batches — prefill
 //    is compute-bound and serializes whatever --max-num-seqs allows, so it is a property of the
 //    prompt length alone;
-//  - decode step time, d(B, P): the steady-state (median) token gap at decode batch B = min(C, S).
-//    It grows with B and with P — every step re-reads the whole KV cache — which is exactly why a
-//    completion-starved sweep used to make every --max-num-seqs look alike.
+//  - decode step time, d(B, P): inferred from measured mean ITL after removing the prefill stalls
+//    already included in that mean. It grows with decode batch B = min(C, S) and prompt length P.
 //
 // A synchronized batch of C requests against a --max-num-seqs = S server then runs in
 // ceil(C / S) waves — full waves of S plus a possible smaller remainder, each billed at its own
@@ -27,10 +26,9 @@ export type JobEstimate = {
   decodeSeconds: number;
   durationSeconds: number;
   waves: number;
-  // What the batch's median request waits and streams at.
+  // Median wait to first token and mean streaming latency across the batch.
   feltTtft: number;
   feltItl: number;
-  steadyItl: number;
   prefillPerRequest: number;
   // min(C, S): how many sequences decode together in the full waves.
   decodeBatch: number;
@@ -45,6 +43,10 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function mean(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 // Collapse points to one value per prompt length (medians), sorted ascending. series_id names the
@@ -107,27 +109,64 @@ function prefillCurve(points: BenchPoint[]): { curve: CurvePoint[]; concurrency:
   return curve.length > 0 ? { curve, concurrency } : null;
 }
 
+type PrefillCurve = NonNullable<ReturnType<typeof prefillCurve>>;
+
+function prefillPerRequestAt(
+  prefill: PrefillCurve,
+  promptTokens: number,
+): { value: number; extrapolated: boolean } | null {
+  const result = interpolate(prefill.curve, promptTokens);
+  return result
+    ? { value: result.value / ((prefill.concurrency + 1) / 2), extrapolated: result.extrapolated }
+    : null;
+}
+
 function decodeBatchOf(point: BenchPoint): number {
   // Without a recorded --max-num-seqs (legacy artifacts) assume the server admitted the whole batch.
   return Math.min(point.concurrent_requests, point.max_num_seqs ?? point.concurrent_requests);
 }
 
-// The steady-state step time d(batch, prompt length). The grid samples it wherever a cell decoded
-// at that batch — every (C, S) cell contributes at batch min(C, S), so e.g. batch 1 is measured on
-// every server's single-request rows even when no --max-num-seqs = 1 server was swept. A batch the
-// doubling grid skipped (3, 5, 6...) is log-log interpolated between its measured neighbours;
+// Average number of prefills that happen after a request's first token. Requests run in waves of
+// --max-num-seqs, and position k in a wave of size W waits through W-k later prefills.
+function meanRemainingPrefills(point: BenchPoint): number {
+  const seqs = Math.max(1, point.max_num_seqs ?? point.concurrent_requests);
+  let total = 0;
+  for (let remaining = point.concurrent_requests; remaining > 0; remaining -= seqs) {
+    const size = Math.min(seqs, remaining);
+    total += (size * (size - 1)) / 2;
+  }
+  return total / point.concurrent_requests;
+}
+
+// Infer the decode-only step time from felt mean ITL. Mean ITL contains the slow gaps caused by
+// later prefills in the same wave, so remove that measured prefill cost before fitting decode.
+function inferredDecodeItl(point: BenchPoint, prefill: PrefillCurve): number | undefined {
+  if (point.completion_tokens == null || point.completion_tokens < 2 || point.average_itl <= 0) return undefined;
+  const pointPrefill = prefillPerRequestAt(prefill, point.median_prompt_tokens);
+  if (!pointPrefill) return undefined;
+  const prefillStall = (meanRemainingPrefills(point) * pointPrefill.value) / (point.completion_tokens - 1);
+  const decodeItl = point.average_itl - prefillStall;
+  return decodeItl > 0 ? decodeItl : undefined;
+}
+
+// The inferred decode-only step time d(batch, prompt length). Every (C, S) cell contributes at
+// batch min(C, S). Missing batch sizes are log-log interpolated between measured neighbours;
 // outside the measured range the nearest batch stands in and the result is flagged.
 function decodeStep(
   points: BenchPoint[],
   batch: number,
   promptTokens: number,
+  prefill: PrefillCurve,
 ): { value: number; extrapolated: boolean } | null {
-  const usable = points.filter((point) => point.median_itl != null && point.median_itl > 0);
+  const usable = points.filter((point) => inferredDecodeItl(point, prefill) != null);
   if (usable.length === 0) return null;
   const batches = [...new Set(usable.map(decodeBatchOf))].sort((a, b) => a - b);
   const at = (measured: number) =>
     interpolate(
-      curveOf(usable.filter((point) => decodeBatchOf(point) === measured), (point) => point.median_itl),
+      curveOf(
+        usable.filter((point) => decodeBatchOf(point) === measured),
+        (point) => inferredDecodeItl(point, prefill),
+      ),
       promptTokens,
     );
   if (batches.includes(batch)) return at(batch);
@@ -157,9 +196,9 @@ export function estimateJob(points: BenchPoint[], inputs: JobInputs): JobEstimat
 
   const prefill = prefillCurve(points);
   if (!prefill) return null;
-  const prefillAt = interpolate(prefill.curve, promptTokens);
+  const prefillAt = prefillPerRequestAt(prefill, promptTokens);
   if (!prefillAt) return null;
-  const prefillPerRequest = prefillAt.value / ((prefill.concurrency + 1) / 2);
+  const prefillPerRequest = prefillAt.value;
 
   // Wave sizes: full waves of --max-num-seqs, then whatever remains. Each wave decodes at its own
   // size's step time — billing a straggler wave of 1 at the full batch's slower rate would punish a
@@ -174,7 +213,7 @@ export function estimateJob(points: BenchPoint[], inputs: JobInputs): JobEstimat
   let decodeExtrapolated = false;
   const stepCache = new Map<number, number>();
   for (const size of new Set(waveSizes)) {
-    const step = decodeStep(points, size, promptTokens);
+    const step = decodeStep(points, size, promptTokens, prefill);
     if (!step) return null;
     decodeExtrapolated = decodeExtrapolated || step.extrapolated;
     stepCache.set(size, step.value);
@@ -206,8 +245,7 @@ export function estimateJob(points: BenchPoint[], inputs: JobInputs): JobEstimat
     durationSeconds: prefillSeconds + decodeSeconds,
     waves,
     feltTtft: median(ttfts),
-    feltItl: median(feltItls),
-    steadyItl: stepOfWave[0],
+    feltItl: mean(feltItls),
     prefillPerRequest,
     decodeBatch: Math.min(concurrent, seqs),
     extrapolated: prefillAt.extrapolated || decodeExtrapolated,

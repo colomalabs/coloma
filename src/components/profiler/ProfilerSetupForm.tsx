@@ -123,16 +123,18 @@ export function ProfilerSetupForm({
             Auto --max-model-len (the model&apos;s own maximum)
           </label>
           {!autoMaxModelLen ? (
-            // Keep the floor in sync with the backend's MIN_MAX_MODEL_LEN: vLLM routinely refuses
-            // to boot below 2048.
-            <NumberField
-              disabled={inputsDisabled}
-              id="profile-max-model-len"
-              label="--max-model-len"
-              min={Math.max(2048, completionTokens + 1)}
-              onChange={setMaxModelLen}
-              value={maxModelLen}
-            />
+            <div className="grid w-fit gap-1">
+              <NumberField
+                disabled={inputsDisabled}
+                id="profile-max-model-len"
+                label="--max-model-len"
+                onChange={setMaxModelLen}
+                value={maxModelLen}
+              />
+              {maxModelLen < 2048 ? (
+                <p className="text-xs text-amber-600">vLLM may not start below 2,048 tokens.</p>
+              ) : null}
+            </div>
           ) : null}
 
           <div className="grid gap-1.5">

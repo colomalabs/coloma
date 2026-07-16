@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, readJson } from "../lib/api";
 import { useProfilerArtifacts } from "../lib/queries";
-import { SPECS, specHint } from "./benchMetricSpecs";
+import { SPECS } from "./benchMetricSpecs";
 import { SeriesChart } from "./charts/SeriesChart";
 import { formatTokens } from "./charts/chartFormatters";
 import { BenchPoint, ProfilerArtifact, ProfilerArtifactSummary } from "../types";
@@ -216,14 +216,12 @@ export function CompareTab() {
                           label: labelA,
                           color: PICK_COLORS.a,
                           value: (row: CompareRow) => (row.a ? spec.metric(row.a) : NaN),
-                          hint: specHint(spec.hint, (row: CompareRow) => row.a),
                         },
                         {
                           id: "b",
                           label: labelB,
                           color: PICK_COLORS.b,
                           value: (row: CompareRow) => (row.b ? spec.metric(row.b) : NaN),
-                          hint: specHint(spec.hint, (row: CompareRow) => row.b),
                         },
                       ]}
                       title={spec.title}

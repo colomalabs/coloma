@@ -143,9 +143,6 @@ export type RequestSample = {
   completion_tokens: number;
   ttft: number;
   mean_itl: number;
-  // Median token gap: the steady-state decode step time, robust to the slow start while
-  // batch-mates prefill.
-  median_itl: number;
 };
 
 export type PressureTestResult = {
@@ -183,8 +180,6 @@ export type BenchPoint = {
   median_ttft: number;
   // Felt ITL: mean token gap over the whole response, slow start under co-resident prefill included.
   average_itl: number;
-  // Steady-state ITL: median token gap once the batch settles. Absent from older artifacts.
-  median_itl?: number;
   system_throughput: number;
 };
 

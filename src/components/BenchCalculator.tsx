@@ -118,16 +118,20 @@ export function BenchCalculator({ points }: { points: BenchPoint[] }) {
               value={`${formatSeconds(estimate.feltTtft)}s`}
             />
             <EstimateCard
-              detail={`steady ${formatSeconds(estimate.steadyItl)}s at decode batch ${estimate.decodeBatch}`}
+              detail=""
               label="Average ITL (s)"
               value={`${formatSeconds(estimate.feltItl)}s`}
             />
           </div>
+          {estimate.extrapolated ? (
+            <p className="mt-2 text-xs text-amber-600">
+              Outside the measured range. Treat this estimate as approximate.
+            </p>
+          ) : null}
         </>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">
-          The calculator needs the steady-state ITL this version&apos;s sweep records; this profile predates
-          it. Run a new profile to enable estimates.
+          This profile lacks the completion timing needed for estimates. Run a new profile to enable them.
         </p>
       )}
     </section>

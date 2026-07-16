@@ -11,7 +11,6 @@ from backend.llm_profiler import (
     DEFAULT_COMPLETION_TOKENS,
     MAX_SWEEP_OOM_MAX_MODEL_LEN_HALVING_RETRIES,
     MAX_NUM_SEQS_VALUES,
-    MIN_MAX_MODEL_LEN,
     BenchmarkSkipped,
     BenchPoint,
     OomRecoveryOptions,
@@ -188,7 +187,7 @@ def test_skipping_the_sweep_keeps_the_points_already_measured():
             await asyncio.sleep(60)
         return BenchMeasurement(
             median_prompt_tokens=n_tokens, completion_tokens=128, duration=2.0, median_ttft=0.2,
-            average_itl=0.01, median_itl=0.008, system_throughput=120.0,
+            average_itl=0.01, system_throughput=120.0,
         )
 
     profiler.run_batch = fake_batch
@@ -215,7 +214,7 @@ def test_sweep_point_returns_its_measurement_when_no_skip_is_requested():
 
     measurement = BenchMeasurement(
         median_prompt_tokens=1024, completion_tokens=128, duration=2.0, median_ttft=0.2,
-        average_itl=0.01, median_itl=0.008, system_throughput=120.0,
+        average_itl=0.01, system_throughput=120.0,
     )
 
     async def fake_batch(num_seqs, n_tokens):
@@ -246,7 +245,7 @@ def test_run_batch_measures_the_batch_wall_clock_at_the_configured_completion_le
             batches.append((len(prompts), completion_tokens))
             return [
                 RequestSample(prompt_tokens=1024, completion_tokens=64, ttft=0.5 * index,
-                              mean_itl=0.05 * index, median_itl=0.01 * index, decoding_throughput=20.0)
+                              mean_itl=0.05 * index, decoding_throughput=20.0)
                 for index in (1, 2, 3)
             ]
 
@@ -270,7 +269,6 @@ def test_run_batch_measures_the_batch_wall_clock_at_the_configured_completion_le
     assert measured.duration > 0.0
     assert measured.median_ttft == pytest.approx(1.0)
     assert measured.average_itl == pytest.approx(0.1)
-    assert measured.median_itl == pytest.approx(0.02)
     assert measured.system_throughput > 0.0
 
 
@@ -329,7 +327,7 @@ def test_sweep_point_abandons_the_in_flight_batch_when_the_user_skips():
 
 MEASUREMENT = BenchMeasurement(
     median_prompt_tokens=1024, completion_tokens=128, duration=2.0, median_ttft=0.2,
-    average_itl=0.01, median_itl=0.008, system_throughput=120.0,
+    average_itl=0.01, system_throughput=120.0,
 )
 
 
@@ -446,15 +444,25 @@ def test_profiler_config_rejects_invalid_benchmark_values(field, values):
         ProfilerConfig(model_name="test-model", **{field: values})
 
 
-def test_profiler_config_rejects_a_max_model_len_below_the_vllm_floor():
-    config = ProfilerConfig(model_name="test-model", max_model_len=MIN_MAX_MODEL_LEN - 1)
+def test_profiler_config_allows_a_small_max_model_len():
+    validate_config(ProfilerConfig(model_name="test-model", completion_tokens=64, max_model_len=1024))
 
-    with pytest.raises(ValueError, match="at least"):
-        validate_config(config)
+
+def test_small_max_model_len_only_generates_prompts_that_fit():
+    config = ProfilerConfig(model_name="test-model", completion_tokens=64, max_model_len=1024)
+    profiler = make_profiler(SkipObserver(), config)
+
+    try:
+        prompt_tokens = profiler.prompt_token_values(1024)
+    finally:
+        asyncio.run(profiler.bench.aclose())
+
+    assert prompt_tokens == [1, 960]
+    assert all(value + config.completion_tokens <= 1024 for value in prompt_tokens)
 
 
 def test_profiler_config_rejects_a_max_model_len_without_room_for_the_completion():
-    config = ProfilerConfig(model_name="test-model", completion_tokens=4096, max_model_len=MIN_MAX_MODEL_LEN)
+    config = ProfilerConfig(model_name="test-model", completion_tokens=4096, max_model_len=2048)
 
     with pytest.raises(ValueError, match="room for the completion"):
         validate_config(config)

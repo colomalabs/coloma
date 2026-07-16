@@ -8,7 +8,6 @@ export type BenchMetricSpec = {
   unit: string;
   metric: (point: BenchPoint) => number;
   format: (value: number) => string;
-  hint?: (point: BenchPoint) => string;
 };
 
 // The two metrics every sweep chart plots. Shared with the compare panel, which draws them
@@ -31,17 +30,5 @@ export const SPECS: BenchMetricSpec[] = [
     unit: "s",
     metric: (point) => point.average_itl,
     format: formatSeconds,
-    hint: (point) => (point.median_itl != null ? `steady ${formatSeconds(point.median_itl)}s` : ""),
   },
 ];
-
-export function specHint<T>(
-  hint: ((point: BenchPoint) => string) | undefined,
-  pick: (row: T) => BenchPoint | undefined,
-): ((row: T) => string) | undefined {
-  if (!hint) return undefined;
-  return (row) => {
-    const point = pick(row);
-    return point ? hint(point) : "";
-  };
-}
