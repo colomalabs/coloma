@@ -1,5 +1,5 @@
 
-![cover](./cover.png)
+![cover](./cover.jpg)
 
 ### The Continuous Verification and Optimization layer for self-hosted LLMs
 
