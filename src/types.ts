@@ -21,7 +21,6 @@ export type ValidationConfig = {
 
 export type DeploymentConfig = {
   port: number;
-  api_key: string;
 };
 
 export type OptimizationConfig = {

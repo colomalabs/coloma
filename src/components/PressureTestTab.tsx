@@ -116,6 +116,7 @@ export function PressureTestTab() {
                                     ...current,
                                     [field.key]: Number(event.target.value)
                                 }))}
+                                onDoubleClick={(event) => event.currentTarget.select()}
                                 type="number"
                                 value={form[field.key]}
                             />

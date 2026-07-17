@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Eye, EyeOff, Loader2, RefreshCw, Save } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, Save } from "lucide-react";
 import { apiFetch, readJson } from "../lib/api";
 import { CONFIG_QUERY_KEY, useAppConfig } from "../lib/queries";
 import type { AsyncState, ConfigStatus, DeploymentConfig } from "../types";
 import { Button } from "./ui/button";
 
-const DEFAULT_DEPLOYMENT_CONFIG: DeploymentConfig = { port: 8000, api_key: "EMPTY" };
+const DEFAULT_DEPLOYMENT_CONFIG: DeploymentConfig = { port: 8000 };
 
 function proxyTarget(baseUrl: string): { host: string; port: number | null } {
   try {
@@ -24,7 +24,6 @@ export function DeploymentSettingsTab() {
   const [settings, setSettings] = useState<DeploymentConfig>(
     () => configQuery.data?.app_config.deployment ?? DEFAULT_DEPLOYMENT_CONFIG,
   );
-  const [showApiKey, setShowApiKey] = useState(false);
   const [saveState, setSaveState] = useState<AsyncState>("idle");
   const [message, setMessage] = useState("");
 
@@ -45,9 +44,6 @@ export function DeploymentSettingsTab() {
     }
     if (target.port !== null && target.port !== settings.port) {
       next.push(`The proxy Base URL uses port ${target.port}, but deployment uses port ${settings.port}.`);
-    }
-    if (proxy.api_key !== settings.api_key) {
-      next.push("The deployment API key does not match the proxy API key.");
     }
     return next;
   }, [configQuery.data?.app_config.proxy, settings]);
@@ -144,26 +140,17 @@ export function DeploymentSettingsTab() {
 
         <div className="grid gap-2">
           <label className="text-sm font-medium" htmlFor="deployment-api-key">API key</label>
-          <div className="flex gap-2">
-            <input
-              className="h-10 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-              id="deployment-api-key"
-              onChange={(event) => setSettings((current) => ({ ...current, api_key: event.target.value }))}
-              placeholder="EMPTY"
-              spellCheck={false}
-              type={showApiKey ? "text" : "password"}
-              value={settings.api_key}
-            />
-            <Button
-              aria-label={showApiKey ? "Hide API key" : "Show API key"}
-              onClick={() => setShowApiKey((current) => !current)}
-              size="icon"
-              type="button"
-              variant="outline"
-            >
-              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
-          </div>
+          <input
+            className="h-10 min-w-0 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
+            disabled
+            id="deployment-api-key"
+            readOnly
+            type="password"
+            value={configQuery.data?.app_config.proxy.api_key ?? ""}
+          />
+          <p className="text-sm text-muted-foreground">
+            Uses the API key from Proxy settings. Change it there.
+          </p>
         </div>
 
         {warnings.length ? (

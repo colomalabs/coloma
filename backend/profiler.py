@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.logger import logger
+from backend.config import read_app_config
 from backend.tasks import spawn_background_task
 from backend.llm_profiler import (
     CONTAINER_PREFIX,
@@ -724,6 +725,9 @@ async def run_profiler_job(job: ProfilerJob) -> None:
 @router.post("/api/profiler/jobs", response_model=ProfilerJobSnapshot)
 async def start_profiler_job(config: ProfilerConfig) -> ProfilerJobSnapshot:
     global active_job_id
+    # Profiled containers use the same credential as the configured proxy target so a
+    # completed profile can be deployed behind that proxy without a second key to manage.
+    config = config.model_copy(update={"api_key": read_app_config().proxy.api_key})
     try:
         validate_config(config)
     except ValueError as exc:

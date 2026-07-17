@@ -35,7 +35,7 @@ export function DeployTab() {
           <div className="space-y-3">
             <h2 className="text-base font-semibold">Profile</h2>
             <ProfilerSection
-              apiKey={configData?.app_config.deployment.api_key ?? ""}
+              apiKey={configData?.app_config.proxy.api_key ?? ""}
               disabled={deployment.runtimeActive}
               disabledReason="Stop the running deployment to start a new profiling run."
               docker={{

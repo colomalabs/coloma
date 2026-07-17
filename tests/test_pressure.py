@@ -55,7 +55,7 @@ def fake_bench(monkeypatch):
         "read_app_config",
         lambda: AppConfig(
             proxy=ProxyConfig(base_url="http://remote-proxy-target:9999", api_key="proxy-key"),
-            deployment=DeploymentConfig(port=9123, api_key="deploy-key"),
+            deployment=DeploymentConfig(port=9123),
         ),
     )
 
@@ -82,7 +82,7 @@ def test_pressure_run_fires_the_whole_batch_concurrently():
     # All four requests are in flight at once, not sent one after another.
     bench = FakeBenchClient.instances[0]
     assert bench.base_url == "http://localhost:9123"
-    assert bench.api_key == "deploy-key"
+    assert bench.api_key == "proxy-key"
     assert body["base_url"] == "http://localhost:9123"
     assert bench.peak_in_flight == 4
     assert bench.prompts_built == 4

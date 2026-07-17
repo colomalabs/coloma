@@ -46,7 +46,6 @@ const defaultConfig: AppConfig = {
   },
   deployment: {
     port: 8000,
-    api_key: "EMPTY",
   },
   optimization: {
     max_mp: 0,

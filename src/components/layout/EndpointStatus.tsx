@@ -18,7 +18,7 @@ export function EndpointStatus() {
   }
 
   const dotClass =
-    state === "connected" ? "bg-emerald-500" : state === "disconnected" ? "bg-destructive" : "bg-muted-foreground";
+    state === "connected" ? "bg-primary" : state === "disconnected" ? "bg-destructive" : "bg-muted-foreground";
   const label =
     state === "connected"
       ? "OpenAI endpoint connected"

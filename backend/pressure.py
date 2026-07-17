@@ -114,9 +114,10 @@ async def run_pressure_test(payload: PressureTestRequest) -> PressureTestResult:
     if await profiler_is_running():
         raise HTTPException(status_code=409, detail="Profiler is running")
 
-    deployment = read_app_config().deployment
+    app_config = read_app_config()
+    deployment = app_config.deployment
     base_url = vllm_base_url(deployment.port)
-    bench = VllmBenchClient(base_url, deployment.api_key, payload.ttft_timeout)
+    bench = VllmBenchClient(base_url, app_config.proxy.api_key, payload.ttft_timeout)
     try:
         try:
             model = await bench.get_model_name()

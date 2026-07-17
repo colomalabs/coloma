@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Calculator as CalculatorIcon } from "lucide-react";
+import {AlertTriangle, Calculator as CalculatorIcon} from "lucide-react";
 import type { BenchPoint } from "../types";
 import { formatSeconds } from "./charts/chartFormatters";
 import {
@@ -123,11 +123,12 @@ export function BenchCalculator({ points }: { points: BenchPoint[] }) {
               value={`${formatSeconds(estimate.feltItl)}s`}
             />
           </div>
-          {estimate.extrapolated ? (
+          {estimate.extrapolated ? ( <>
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
             <p className="mt-2 text-xs text-amber-600">
               Outside the measured range. Treat this estimate as approximate.
             </p>
-          ) : null}
+          </>) : null}
         </>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">

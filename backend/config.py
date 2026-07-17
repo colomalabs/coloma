@@ -48,7 +48,6 @@ class ValidationConfig(BaseModel):
 
 class DeploymentConfig(BaseModel):
     port: int = DEFAULT_DEPLOYMENT_PORT
-    api_key: str = DEFAULT_API_KEY
 
 
 class OptimizationConfig(BaseModel):
@@ -87,7 +86,6 @@ def normalize_app_config(config: AppConfig) -> AppConfig:
     config.proxy.max_body_bytes = normalize_body_limit(config.proxy.max_body_bytes)
     config.proxy.db_path = normalize_db_path(config.proxy.db_path)
     config.deployment.port = max(1, min(config.deployment.port, 65_535))
-    config.deployment.api_key = config.deployment.api_key.strip() or DEFAULT_API_KEY
     config.validation.fields = [
         SchemaField(
             name=field.name.strip(),
