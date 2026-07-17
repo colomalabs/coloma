@@ -19,7 +19,7 @@ import { python } from "@codemirror/lang-python";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Button } from "./ui/button";
 import { apiFetch, readJson } from "../lib/api";
-import { CONFIG_QUERY_KEY, useAppConfig } from "../lib/queries";
+import { CONFIG_QUERY_KEY, MODELS_QUERY_KEY, useAppConfig } from "../lib/queries";
 import { SCHEMA_TYPES } from "../lib/schema";
 import type {
   AppConfig,
@@ -195,7 +195,7 @@ export function ConfigTab() {
       setConfig(payload.app_config);
       setSavedConfig(payload.app_config);
       queryClient.setQueryData(CONFIG_QUERY_KEY, payload);
-      void queryClient.invalidateQueries({ queryKey: ["models"] });
+      void queryClient.invalidateQueries({ queryKey: MODELS_QUERY_KEY });
       setSaveState("success");
       setMessage("Settings saved.");
     } catch (error) {
@@ -218,6 +218,9 @@ export function ConfigTab() {
       if (!result.ok) {
         throw new Error(result.error || "Upstream test failed");
       }
+      // A successful test means the upstream just became reachable; refresh the model list the Chat
+      // tab reads from so a newly detected model shows up there without a page reload.
+      void queryClient.invalidateQueries({ queryKey: MODELS_QUERY_KEY });
       setTestState("success");
       setMessage(result.models.length ? `Connected. Found ${result.models.length} model(s).` : "Connected. No models reported.");
     } catch (error) {

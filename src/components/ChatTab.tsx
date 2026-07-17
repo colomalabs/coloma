@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Paperclip, Send, Square, SquarePen, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { PdfImportModal } from "./PdfImportModal";
-import { apiFetch, notifyUnauthorized, readJson, UnauthorizedError } from "../lib/api";
-import { useAppConfig } from "../lib/queries";
+import { apiFetch, notifyUnauthorized, UnauthorizedError } from "../lib/api";
+import { useAppConfig, useModels } from "../lib/queries";
 import { SCHEMA_TYPES } from "../lib/schema";
 import { parseSseDeltaLine, parseSseUsageLine } from "../lib/sse";
-import type { ModelsResponse, SchemaField } from "../types";
+import type { SchemaField } from "../types";
 
 const CHAT_TEMPERATURE = 0;
 const JSON_SCHEMA_TYPES = new Set<string>(SCHEMA_TYPES);
@@ -137,11 +136,7 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
 }
 
 export function ChatTab() {
-  const modelsQuery = useQuery({
-    queryKey: ["models"],
-    queryFn: async () => readJson<ModelsResponse>(await apiFetch("/api/models")),
-    staleTime: 60_000,
-  });
+  const modelsQuery = useModels();
 
   const configQuery = useAppConfig();
 
