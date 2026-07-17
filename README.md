@@ -5,6 +5,7 @@
 ![cover](./cover.jpg)
 
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue)](https://www.apache.org/licenses/LICENSE-2.0.txt)
+[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white)](https://discord.gg/kxtxsnmkba)
 [![X](https://img.shields.io/twitter/follow/tschillaciML?logo=X&color=%20%23f5f5f5)](https://x.com/tschillaciML)
 
 ## Features
