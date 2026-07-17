@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ScrollText } from "lucide-react";
 import { apiFetch, readJson } from "../../lib/api";
 import type { BenchPoint, ContextLengthWarning, ProfilerArtifact } from "../../types";
-import { BenchCalculator } from "../BenchCalculator";
+import { JobTimeEstimator } from "../JobTimeEstimator";
 import { BenchCharts } from "../BenchCharts";
 import { ContextLengthWarnings } from "./ContextLengthWarnings";
 
@@ -45,7 +45,7 @@ export function ArtifactCharts({ artifactId }: { artifactId: number }) {
         selectedMaxModelLen={data.profiling_results.selected_max_model_len ?? null}
         stressTests={data.profiling_results.stress_tests ?? []}
       />
-      {points.length > 0 ? <BenchCalculator points={points} /> : null}
+      {points.length > 0 ? <JobTimeEstimator points={points} /> : null}
     </div>
   );
 }

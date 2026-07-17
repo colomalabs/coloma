@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Pencil, SkipForward, XCircle } from "lucide-react";
 import type { ProfilerStep } from "../../types";
-import { BenchCalculator } from "../BenchCalculator";
+import { JobTimeEstimator } from "../JobTimeEstimator";
 import { BenchCharts } from "../BenchCharts";
 import { Button } from "../ui/button";
 import { ContextLengthWarnings } from "./ContextLengthWarnings";
@@ -196,7 +196,7 @@ export function ProfilerWorkflow({ controller }: { controller: ProfilerControlle
       {/* Estimates only make sense once the sweep has stopped adding points — and the place the user
           wants them is right where the deploy values get picked. flex-col-reverse puts this between
           the benchmark card and the configuration card. */}
-      {readyToConfigure && job.bench_points.length > 0 ? <BenchCalculator points={job.bench_points} /> : null}
+      {readyToConfigure && job.bench_points.length > 0 ? <JobTimeEstimator points={job.bench_points} /> : null}
 
       {readyToConfigure || oomRecoveryOptions ? (
         <StepCard icon={configureIcon} step={configureStep} title={configureStepBase.title}>

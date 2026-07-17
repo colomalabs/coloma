@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import {AlertTriangle, Calculator as CalculatorIcon} from "lucide-react";
+import {Calculator as CalculatorIcon} from "lucide-react";
 import type { BenchPoint } from "../types";
 import { formatSeconds } from "./charts/chartFormatters";
 import {
@@ -51,7 +51,7 @@ function EstimateCard({ label, value, detail }: { label: string; value: string; 
   );
 }
 
-export function BenchCalculator({ points }: { points: BenchPoint[] }) {
+export function JobTimeEstimator({ points }: { points: BenchPoint[] }) {
   // Seeded once from whatever points existed on first render; during a live sweep the user can
   // simply type the values the later servers add.
   const [maxNumSeqs, setMaxNumSeqs] = useState(() => {
@@ -72,7 +72,7 @@ export function BenchCalculator({ points }: { points: BenchPoint[] }) {
     <section className="rounded-md border bg-card p-3">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         <CalculatorIcon className="h-4 w-4 shrink-0" />
-        Job time calculator
+        Job time estimator
       </div>
       <div className="flex flex-wrap gap-4">
         <CalculatorField
@@ -123,12 +123,6 @@ export function BenchCalculator({ points }: { points: BenchPoint[] }) {
               value={`${formatSeconds(estimate.feltItl)}s`}
             />
           </div>
-          {estimate.extrapolated ? ( <>
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-            <p className="mt-2 text-xs text-amber-600">
-              Outside the measured range. Treat this estimate as approximate.
-            </p>
-          </>) : null}
         </>
       ) : (
         <p className="mt-3 text-sm text-muted-foreground">

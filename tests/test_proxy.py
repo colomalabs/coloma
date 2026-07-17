@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import gzip
 import io
 import json
 import sqlite3
@@ -238,6 +239,36 @@ def test_non_streaming_proxy_forwards_and_captures(monkeypatch, tmp_path):
     assert json.loads(record["response_body"]) == {"id": "chatcmpl_1", "choices": []}
 
 
+def test_non_streaming_proxy_removes_headers_for_decoded_upstream_body(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.json"
+    db_path = tmp_path / "tee.sqlite3"
+    write_config(config_path, db_path)
+    body = b"hello world"
+    compressed = gzip.compress(body)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "application/octet-stream",
+                "content-encoding": "gzip",
+                "content-length": str(len(compressed)),
+            },
+            content=compressed,
+        )
+
+    monkeypatch.setattr(config, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(upstream, "upstream_transport", httpx.MockTransport(handler))
+
+    with TestClient(main.app) as client:
+        response = client.get("/v1/example")
+
+    assert response.status_code == 200
+    assert response.content == body
+    assert "content-encoding" not in response.headers
+    assert response.headers["content-length"] == str(len(body))
+
+
 def test_streaming_proxy_captures_after_stream(monkeypatch, tmp_path):
     config_path = tmp_path / "config.json"
     db_path = tmp_path / "tee.sqlite3"
@@ -262,6 +293,37 @@ def test_streaming_proxy_captures_after_stream(monkeypatch, tmp_path):
     [record] = records(db_path)
     assert record["model"] == "stream-model"
     assert record["response_body"] == body
+
+
+def test_streaming_proxy_removes_headers_for_decoded_upstream_body(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.json"
+    db_path = tmp_path / "tee.sqlite3"
+    write_config(config_path, db_path)
+    body = b"data: first\n\ndata: second\n\n"
+    compressed = gzip.compress(body)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "content-type": "text/event-stream",
+                "content-encoding": "gzip",
+                "content-length": str(len(compressed)),
+            },
+            content=compressed,
+        )
+
+    monkeypatch.setattr(config, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(upstream, "upstream_transport", httpx.MockTransport(handler))
+
+    with TestClient(main.app) as client:
+        with client.stream("GET", "/v1/example") as response:
+            received = b"".join(response.iter_bytes())
+
+    assert response.status_code == 200
+    assert received == body
+    assert "content-encoding" not in response.headers
+    assert "content-length" not in response.headers
 
 
 def test_capture_truncates_large_bodies(monkeypatch, tmp_path):

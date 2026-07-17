@@ -20,6 +20,11 @@ HOP_BY_HOP_HEADERS = {
     "upgrade",
 }
 
+# The proxy consumes responses through httpx's decoded byte iterators. These
+# headers describe the encoded representation received from upstream and are
+# therefore no longer valid for the decoded bytes sent to the client.
+DECODED_RESPONSE_HEADERS = {"content-encoding", "content-length"}
+
 
 # Test seam: tests monkeypatch this with an httpx.MockTransport to fake the
 # upstream. None means httpx uses its default transport.
@@ -76,7 +81,8 @@ def upstream_headers(request: Request, api_key: str) -> dict[str, str]:
 
 
 def response_headers(headers: httpx.Headers) -> dict[str, str]:
-    return {name: value for name, value in headers.items() if name.lower() not in HOP_BY_HOP_HEADERS}
+    excluded = HOP_BY_HOP_HEADERS | DECODED_RESPONSE_HEADERS
+    return {name: value for name, value in headers.items() if name.lower() not in excluded}
 
 
 def proxy_upstream_url(base_url: str, path: str) -> str:
