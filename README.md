@@ -8,7 +8,7 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?logo=discord&logoColor=white)](https://discord.gg/E7b48D9d26)
 [![X](https://img.shields.io/twitter/follow/tschillaciML?logo=X&color=%20%23f5f5f5)](https://x.com/tschillaciML)
 
-![demo](./demo.gif)
+<img src="./demo.gif" width="100%">
 
 ## Features
 
