@@ -1,6 +1,9 @@
 import { useUpstreamStatus } from "../../lib/queries";
 
-type ConnectionState = "checking" | "connected" | "disconnected";
+// "waiting" = the endpoint is reachable but reports no models yet (e.g. a deployment whose HTTP
+// server is up before the model is registered). It is deliberately kept distinct from "connected"
+// so the light only turns green once the Chat tab can actually find a model to talk to.
+type ConnectionState = "checking" | "connected" | "waiting" | "disconnected";
 
 export function EndpointStatus() {
   const { data, error } = useUpstreamStatus();
@@ -8,23 +11,35 @@ export function EndpointStatus() {
   let state: ConnectionState = "checking";
   let message = "Checking connection to the OpenAI endpoint…";
   if (data) {
-    state = data.connected ? "connected" : "disconnected";
-    message = data.connected
-      ? data.detail || "Connected to the OpenAI endpoint"
-      : data.error || "Could not reach the OpenAI endpoint";
+    if (!data.connected) {
+      state = "disconnected";
+      message = data.error || "Could not reach the OpenAI endpoint";
+    } else if (data.model_count > 0) {
+      state = "connected";
+      message = data.detail || "Connected to the OpenAI endpoint";
+    } else {
+      state = "waiting";
+      message = "Endpoint reachable, waiting for a model to come online…";
+    }
   } else if (error) {
     state = "disconnected";
     message = error instanceof Error ? error.message : "Could not reach the OpenAI endpoint";
   }
 
   const dotClass =
-    state === "connected" ? "bg-primary" : state === "disconnected" ? "bg-destructive" : "bg-muted-foreground";
+    state === "connected"
+      ? "bg-primary"
+      : state === "disconnected"
+        ? "bg-destructive"
+        : "bg-muted-foreground";
   const label =
     state === "connected"
       ? "OpenAI endpoint connected"
       : state === "disconnected"
         ? "OpenAI endpoint disconnected"
-        : "Checking OpenAI endpoint…";
+        : state === "waiting"
+          ? "Waiting for a model…"
+          : "Checking OpenAI endpoint…";
 
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground p-1.5" title={message}>

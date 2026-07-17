@@ -3,7 +3,7 @@ import { Paperclip, Send, Square, SquarePen, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { PdfImportModal } from "./PdfImportModal";
 import { apiFetch, notifyUnauthorized, UnauthorizedError } from "../lib/api";
-import { useAppConfig, useModels } from "../lib/queries";
+import { useAppConfig, useModels, useUpstreamStatus } from "../lib/queries";
 import { SCHEMA_TYPES } from "../lib/schema";
 import { parseSseDeltaLine, parseSseUsageLine } from "../lib/sse";
 import type { SchemaField } from "../types";
@@ -137,6 +137,7 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
 
 export function ChatTab() {
   const modelsQuery = useModels();
+  const upstreamStatusQuery = useUpstreamStatus();
 
   const configQuery = useAppConfig();
 
@@ -166,6 +167,17 @@ export function ChatTab() {
   const models = useMemo(() => modelsQuery.data?.models ?? [], [modelsQuery.data?.models]);
   const schemaFields = configQuery.data?.app_config.validation.fields ?? [];
   const isEmpty = messages.length === 0;
+
+  // The always-mounted status query polls the same upstream this tab reads. When it reports a model
+  // but our list is still empty, pull the model list immediately instead of waiting for the next poll
+  // so a just-deployed model is selectable the moment the sidebar shows the endpoint as ready.
+  const upstreamModelCount = upstreamStatusQuery.data?.model_count ?? 0;
+  const { refetch: refetchModels } = modelsQuery;
+  useEffect(() => {
+    if (upstreamModelCount > 0 && !models.length && !modelsQuery.isFetching) {
+      void refetchModels();
+    }
+  }, [upstreamModelCount, models.length, modelsQuery.isFetching, refetchModels]);
 
   useEffect(() => {
     if (!models.length) {

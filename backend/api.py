@@ -41,6 +41,7 @@ class ProxyTestResult(BaseModel):
 
 class UpstreamStatus(BaseModel):
     connected: bool
+    model_count: int = 0
     detail: str = ""
     error: str = ""
 
@@ -93,7 +94,9 @@ async def upstream_status() -> UpstreamStatus:
     models, error = await try_detect_proxy_models(config.proxy.base_url, config.proxy.api_key)
     if error:
         return UpstreamStatus(connected=False, error=error)
-    return UpstreamStatus(connected=True, detail=f"Detected {len(models)} model(s)")
+    return UpstreamStatus(
+        connected=True, model_count=len(models), detail=f"Detected {len(models)} model(s)"
+    )
 
 
 @router.get("/api/models", response_model=ModelsResponse)

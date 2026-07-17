@@ -152,7 +152,34 @@ def test_upstream_status_reports_connected(monkeypatch, tmp_path):
         response = client.get("/api/status")
 
     assert response.status_code == 200
-    assert response.json() == {"connected": True, "detail": "Detected 1 model(s)", "error": ""}
+    assert response.json() == {
+        "connected": True,
+        "model_count": 1,
+        "detail": "Detected 1 model(s)",
+        "error": "",
+    }
+
+
+def test_upstream_status_reachable_but_no_models(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.json"
+    db_path = tmp_path / "tee.sqlite3"
+    write_config(config_path, db_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"data": []})
+
+    monkeypatch.setattr(config, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(upstream, "upstream_transport", httpx.MockTransport(handler))
+
+    with TestClient(main.app) as client:
+        response = client.get("/api/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    # Reachable but nothing served yet: connected, but the model count is what lets the UI hold the
+    # sidebar back from "ready" until a model actually comes online.
+    assert payload["connected"] is True
+    assert payload["model_count"] == 0
 
 
 def test_upstream_status_reports_disconnected(monkeypatch, tmp_path):
