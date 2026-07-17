@@ -1,13 +1,11 @@
 import { useState } from "react";
 import { AlertTriangle, Gauge, Loader2, Plus, RotateCcw, X, XCircle } from "lucide-react";
-import type { DockerPullStatus } from "../../types";
+import type { DockerPullStatus, ProfilerDefaults } from "../../types";
 import { Button } from "../ui/button";
 import { InfoNotice } from "../ui/info-notice";
 import { DockerImageSelector } from "./DockerImageSelector";
 import type { ProfilerController } from "./useProfilerController";
 
-const DEFAULT_MAX_NUM_SEQS_VALUES = [4, 16, 64];
-const DEFAULT_CONCURRENT_REQUEST_VALUES = [1, 2, 4, 8, 16, 32, 64, 128];
 const DEFAULT_COMPLETION_TOKENS = 64;
 
 export type ProfilerDockerState = {
@@ -20,6 +18,7 @@ export type ProfilerDockerState = {
 
 type ProfilerSetupFormProps = {
   controller: ProfilerController;
+  defaults: ProfilerDefaults;
   disabled: boolean;
   disabledReason?: string;
   docker: ProfilerDockerState;
@@ -27,6 +26,7 @@ type ProfilerSetupFormProps = {
 
 export function ProfilerSetupForm({
   controller,
+  defaults,
   disabled,
   disabledReason,
   docker,
@@ -40,8 +40,10 @@ export function ProfilerSetupForm({
   const [ttftTimeout, setTtftTimeout] = useState(30);
   const [stressTestTimeout, setStressTestTimeout] = useState(180);
   const [completionTokens, setCompletionTokens] = useState(DEFAULT_COMPLETION_TOKENS);
-  const [maxNumSeqsValues, setMaxNumSeqsValues] = useState(DEFAULT_MAX_NUM_SEQS_VALUES);
-  const [concurrentRequestValues, setConcurrentRequestValues] = useState(DEFAULT_CONCURRENT_REQUEST_VALUES);
+  const [maxNumSeqsValues, setMaxNumSeqsValues] = useState(() => [...defaults.max_num_seqs_values]);
+  const [concurrentRequestValues, setConcurrentRequestValues] = useState(() => [
+    ...defaults.concurrent_request_values,
+  ]);
   const inputsDisabled = controller.running || disabled;
 
   const start = () => {
@@ -206,8 +208,8 @@ export function ProfilerSetupForm({
               <Button
                 disabled={inputsDisabled}
                 onClick={() => {
-                  setMaxNumSeqsValues(DEFAULT_MAX_NUM_SEQS_VALUES);
-                  setConcurrentRequestValues(DEFAULT_CONCURRENT_REQUEST_VALUES);
+                  setMaxNumSeqsValues([...defaults.max_num_seqs_values]);
+                  setConcurrentRequestValues([...defaults.concurrent_request_values]);
                   setCompletionTokens(DEFAULT_COMPLETION_TOKENS);
                 }}
                 size="sm"

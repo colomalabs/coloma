@@ -115,6 +115,14 @@ def test_job_snapshot_reports_its_configured_server_batch_sizes():
     assert snapshot.benchmarked_max_num_seqs_values == [8, 32]
 
 
+def test_profiler_defaults_endpoint_uses_profiler_config_defaults():
+    defaults = asyncio.run(profiler.profiler_defaults())
+    config = ProfilerConfig(model_name="test-model")
+
+    assert defaults.max_num_seqs_values == config.max_num_seqs_values
+    assert defaults.concurrent_request_values == config.concurrent_request_values
+
+
 def test_context_length_warnings_survive_benchmark_restarts(tmp_path, monkeypatch):
     monkeypatch.setattr(profiler, "PROFILER_DB_PATH", tmp_path / "profiler.sqlite3")
     job = profiler.ProfilerJob(ProfilerConfig(model_name="test-model"))

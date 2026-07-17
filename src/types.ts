@@ -189,6 +189,11 @@ export type StressTestResult = {
   median_ttft: number;
 };
 
+export type ProfilerDefaults = {
+  max_num_seqs_values: number[];
+  concurrent_request_values: number[];
+};
+
 export type ContextLengthWarning = {
   max_model_len: number;
   reason: "oom" | "stress_timeout";

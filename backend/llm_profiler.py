@@ -33,7 +33,7 @@ def vllm_base_url(port: int) -> str:
 
 # The server is booted once per value, and swept once per boot. User-provided values are normalized
 # to this same ascending order so progress, chart groups, and persisted profiles remain predictable.
-MAX_NUM_SEQS_VALUES = [4, 16, 64]
+MAX_NUM_SEQS_VALUES = [1, 4, 16]
 # What the sweep fires at each server, independent of what that server was booted with: 128 requests
 # against a server that decodes 8 at a time is a valid point — the other 120 just queue.
 CONCURRENT_REQUEST_VALUES = [1, 2, 4, 8, 16, 32, 64, 128]

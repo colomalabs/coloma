@@ -4,6 +4,7 @@ import type {
   ConfigStatus,
   DeployStatusResponse,
   ModelsResponse,
+  ProfilerDefaults,
   ProfilerArtifactSummary,
   ProfilerJobSnapshot,
   UpstreamStatus,
@@ -12,6 +13,7 @@ import type {
 export const CONFIG_QUERY_KEY = ["config"];
 export const MODELS_QUERY_KEY = ["models"];
 export const ACTIVE_PROFILER_JOB_QUERY_KEY = ["profiler-active-job"];
+export const PROFILER_DEFAULTS_QUERY_KEY = ["profiler-defaults"];
 export const PROFILER_ARTIFACTS_QUERY_KEY = ["profiler-artifacts"];
 export const UPSTREAM_STATUS_QUERY_KEY = ["upstream-status"];
 export const DEPLOY_STATUS_QUERY_KEY = ["deploy-status"];
@@ -51,6 +53,15 @@ export function useActiveProfilerJob() {
     queryFn: async ({ signal }) =>
       readJson<ProfilerJobSnapshot | null>(await apiFetch("/api/profiler/jobs/active", { signal })),
     refetchInterval: (query) => (isJobActive(query.state.data) ? JOB_POLL_INTERVAL_MS : false),
+  });
+}
+
+export function useProfilerDefaults() {
+  return useQuery({
+    queryKey: PROFILER_DEFAULTS_QUERY_KEY,
+    queryFn: async ({ signal }) =>
+      readJson<ProfilerDefaults>(await apiFetch("/api/profiler/defaults", { signal })),
+    staleTime: Infinity,
   });
 }
 

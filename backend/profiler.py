@@ -19,6 +19,7 @@ from backend.config import read_app_config
 from backend.tasks import spawn_background_task
 from backend.llm_profiler import (
     CONTAINER_PREFIX,
+    CONCURRENT_REQUEST_VALUES,
     MAX_NUM_SEQS_VALUES,
     PROFILER_HF_HOME,
     PROFILER_VLLM_HOME,
@@ -110,6 +111,11 @@ class ProfilerJobSnapshot(BaseModel):
     docker_command: str = ""
     artifact_id: int | None = None
     error: str = ""
+
+
+class ProfilerDefaults(BaseModel):
+    max_num_seqs_values: list[int] = Field(default_factory=lambda: list(MAX_NUM_SEQS_VALUES))
+    concurrent_request_values: list[int] = Field(default_factory=lambda: list(CONCURRENT_REQUEST_VALUES))
 
 
 class ProfilerArtifactSummary(BaseModel):
@@ -720,6 +726,11 @@ async def run_profiler_job(job: ProfilerJob) -> None:
             active_jobs.pop(job.id, None)
             if active_job_id == job.id:
                 active_job_id = None
+
+
+@router.get("/api/profiler/defaults", response_model=ProfilerDefaults)
+async def profiler_defaults() -> ProfilerDefaults:
+    return ProfilerDefaults()
 
 
 @router.post("/api/profiler/jobs", response_model=ProfilerJobSnapshot)
