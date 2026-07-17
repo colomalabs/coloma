@@ -49,13 +49,9 @@ export type ProxyTestResult = {
 
 export type UpstreamStatus = {
   connected: boolean;
+  models: string[];
   model_count: number;
   detail: string;
-  error: string;
-};
-
-export type ModelsResponse = {
-  models: string[];
   error: string;
 };
 

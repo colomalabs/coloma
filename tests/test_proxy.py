@@ -155,6 +155,7 @@ def test_upstream_status_reports_connected(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert response.json() == {
         "connected": True,
+        "models": ["model-a"],
         "model_count": 1,
         "detail": "Detected 1 model(s)",
         "error": "",
@@ -180,6 +181,7 @@ def test_upstream_status_reachable_but_no_models(monkeypatch, tmp_path):
     # Reachable but nothing served yet: connected, but the model count is what lets the UI hold the
     # sidebar back from "ready" until a model actually comes online.
     assert payload["connected"] is True
+    assert payload["models"] == []
     assert payload["model_count"] == 0
 
 
@@ -200,6 +202,7 @@ def test_upstream_status_reports_disconnected(monkeypatch, tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert payload["connected"] is False
+    assert payload["models"] == []
     assert "connection refused" in payload["error"]
 
 

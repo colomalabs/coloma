@@ -41,6 +41,7 @@ class ProxyTestResult(BaseModel):
 
 class UpstreamStatus(BaseModel):
     connected: bool
+    models: list[str] = []
     model_count: int = 0
     detail: str = ""
     error: str = ""
@@ -95,7 +96,10 @@ async def upstream_status() -> UpstreamStatus:
     if error:
         return UpstreamStatus(connected=False, error=error)
     return UpstreamStatus(
-        connected=True, model_count=len(models), detail=f"Detected {len(models)} model(s)"
+        connected=True,
+        models=models,
+        model_count=len(models),
+        detail=f"Detected {len(models)} model(s)",
     )
 
 

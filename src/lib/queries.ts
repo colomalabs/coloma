@@ -3,7 +3,6 @@ import { apiFetch, readJson } from "./api";
 import type {
   ConfigStatus,
   DeployStatusResponse,
-  ModelsResponse,
   ProfilerDefaults,
   ProfilerArtifactSummary,
   ProfilerJobSnapshot,
@@ -11,7 +10,6 @@ import type {
 } from "../types";
 
 export const CONFIG_QUERY_KEY = ["config"];
-export const MODELS_QUERY_KEY = ["models"];
 export const ACTIVE_PROFILER_JOB_QUERY_KEY = ["profiler-active-job"];
 export const PROFILER_DEFAULTS_QUERY_KEY = ["profiler-defaults"];
 export const PROFILER_ARTIFACTS_QUERY_KEY = ["profiler-artifacts"];
@@ -21,7 +19,6 @@ export const DEPLOY_STATUS_QUERY_KEY = ["deploy-status"];
 const JOB_POLL_INTERVAL_MS = 2000;
 const UPSTREAM_STATUS_POLL_INTERVAL_MS = 10_000;
 const DEPLOY_POLL_INTERVAL_MS = 3000;
-const MODELS_POLL_INTERVAL_MS = 5000;
 
 export function isJobActive(job: ProfilerJobSnapshot | null | undefined): boolean {
   return job != null && (job.status === "queued" || job.status === "running");
@@ -36,15 +33,9 @@ export function useAppConfig() {
 }
 
 export function useModels() {
-  return useQuery({
-    queryKey: MODELS_QUERY_KEY,
-    queryFn: async ({ signal }) => readJson<ModelsResponse>(await apiFetch("/api/models", { signal })),
-    staleTime: 60_000,
-    // A model only becomes listable once a deployment is up, and nothing pushes that transition to
-    // this query (visited tabs stay mounted, so there is no remount to trigger a refetch). Poll while
-    // the list is empty so a freshly deployed model appears without a page reload; stop once we have one.
-    refetchInterval: (query) => ((query.state.data?.models.length ?? 0) > 0 ? false : MODELS_POLL_INTERVAL_MS),
-  });
+  // Status includes the detected model names, so Chat and the sidebar observe one request and one
+  // cache entry. This also catches a model replacement when the total model count stays unchanged.
+  return useUpstreamStatus();
 }
 
 export function useActiveProfilerJob() {
